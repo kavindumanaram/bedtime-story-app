@@ -108,3 +108,9 @@ dist
 
 # wincompare file
 .bak
+
+node_modules
+dist
+build
+.env
+.env.local
