@@ -1,190 +1,174 @@
-# Mantis Free React Material UI Dashboard Template [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Get%20Mantis%20Free%20React%20-%20The%20Most%20Beautiful%20Material-UI%20Designed%20Admin%20Dashboard%20Template%20&url=https://mantisdashboard.com/free&via=codedthemes&hashtags=react,materialui,nextjs,webdev,developers,typescript)
+# HushTales - Bedtime Storytelling App
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Price](https://img.shields.io/badge/price-FREE-0098f7.svg)](https://github.com/codedthemes/mantis-free-react-admin-template/blob/master/LICENSE)
-[![GitHub package version](https://img.shields.io/github/package-json/v/codedthemes/mantis-free-react-admin-template)](https://github.com/codedthemes/mantis-free-react-admin-template/)
-[![Download ZIP](https://img.shields.io/badge/Download-ZIP-blue?style=flat-square&logo=github)](https://codedthemes.com/item/mantis-free-mui-admin-template/)
-[![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/p2E2WhCb6s)
+A modern, minimal React + TypeScript web application for bedtime storytelling. Built with Vite, TailwindCSS, and React Router.
 
-Mantis is a free and open source React dashboard template made using the Material UI React component library with aim of flexibility and better customizability.
+## Features
 
-### Name Derived From Nature
+- 📚 Story Library with 10+ bedtime stories
+- 🎵 Audio Player with customizable voices and speeds
+- 📊 Dashboard with listening analytics
+- 💳 Subscription & Billing management
+- ⚙️ Customizable Settings
+- 👤 Parent & Children Profiles
+- 🌙 Night Mode support
+- 📱 Fully responsive mobile design
 
-Mantis Logo is inspired from the insect name - 'Mantises' as they have triangular heads with flexible Necks. Also, the name is derived from two popular design systems, Material and Ant Design (M-Ant-is).
+## Tech Stack
 
-Mantis has Ant Design principal on top of the Material UI React component library.
-
-✨ Support us! If you like this theme, click the ⭐ (Top right) and let it shine
-
-![mantis-free-react-dashboard-template.jpg](https://org-public-assets.s3.us-west-2.amazonaws.com/Free-Version-Banners/GITHUB-FREE-REACT-REPO+-+Mantis.png)
-
-## Table of contents
-
-- [Getting Started](#getting-started)
-- [Download](#download)
-- [Why Mantis?](#why-mantis)
-- [What's included in Premium Version?](#whats-included-in-premium-version)
-- [Documentation](#documentation)
-- [Browser support](#browser-support)
-- [Technology Stack](#technology-stack)
-- [Mantis Figma UI Kit](#mantis-figma-ui-kit)
-- [Other Technologies](#other-technologies)
-- 💰[Save more with Big Bundle](#save-more-with-big-bundle)💰
-- [More React Dashboard Templates](#more-react-dashboard-templates)
-- [Issues?](#issues)
-- [License](#license)
-- [Contributor](#contributor)
-- [Useful Resources](#useful-resources)
-- [Community](#community)
-- [Follow us](#follow-us)
+- **Framework**: React 18 + TypeScript
+- **Build Tool**: Vite
+- **Styling**: TailwindCSS
+- **Routing**: React Router v6
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **State Management**: React Hooks
 
 ## Getting Started
 
-1. Clone from Github
+### Prerequisites
 
-```
-git clone https://github.com/codedthemes/mantis-free-react-admin-template.git
-```
+- Node.js 18+ 
+- npm or yarn
 
-2. Install packages
+### Installation
 
-```
-yarn
-```
-
-3. Run project
-
-```
-yarn run start
+1. Navigate to the project directory:
+```bash
+cd bedtime-app
 ```
 
-## Download
+2. Install dependencies:
+```bash
+npm install
+```
 
-- Mantis Free
-  - [Live Preview](https://mantisdashboard.com/free/)
-  - [Download](https://codedthemes.com/item/mantis-free-mui-admin-template/)
-- Mantis Pro
-  - [Live Preview](https://mantisdashboard.com/)
-  - [Download](https://codedthemes.com/item/mantis-mui-react-dashboard-template/)
+3. Start the development server:
+```bash
+npm run dev
+```
 
-## Why Mantis?
+4. Open your browser to `http://localhost:5173`
 
-Mantis offers everything needed to build an advanced dashboard application. In the initial release, we included following high-end features,
+## Project Structure
 
-- Support React19.
-- Professional user interface.
-- Material UI React components(MUI v7).
-- Fully responsive, all modern browser supported.
-- Easy to use code structure
-- Flexible & high-Performance code
-- Simple documentation
+```
+bedtime-app/
+├── src/
+│   ├── components/          # Reusable UI components
+│   │   ├── AudioControls.tsx
+│   │   ├── Badge.tsx
+│   │   ├── BarChartCard.tsx
+│   │   ├── Card.tsx
+│   │   ├── LineChartCard.tsx
+│   │   ├── Sidebar.tsx
+│   │   ├── StatCard.tsx
+│   │   ├── StoryTable.tsx
+│   │   └── Topbar.tsx
+│   ├── data/                # Mock data
+│   │   └── mock.ts
+│   ├── pages/               # Page components
+│   │   ├── Billing.tsx
+│   │   ├── Dashboard.tsx
+│   │   ├── Library.tsx
+│   │   ├── Player.tsx
+│   │   ├── Profile.tsx
+│   │   └── Settings.tsx
+│   ├── App.tsx              # Main app component
+│   ├── main.tsx             # Entry point
+│   └── index.css            # Global styles
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── tailwind.config.js
+└── README.md
+```
 
-## What's included in Premium Version?
+## Available Scripts
 
-The [Pro version](https://mantisdashboard.com/) of Mantis react template includes features such as TypeScript, apps, authentication methods (i.e. JWT, Auth0, Firebase, AWS, Supabase), advance components, form plugins, layouts, widgets, and more.
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
 
-| [Mantis Free](https://mantisdashboard.com/free/)                                                     | [Mantis](https://mantisdashboard.com/)                                            |
-| ---------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |
-| **7** Demo pages                                                                                     | **85+** demo pages                                                                |
-| -                                                                                                    | ✓ Multi-language                                                                  |
-| -                                                                                                    | ✓ Dark/Light Mode 🌓                                                              |
-| -                                                                                                    | ✓ TypeScript version                                                              |
-| -                                                                                                    | ✓ Design files (Figma)                                                            |
-| -                                                                                                    | ✓ Multiple color options                                                          |
-| -                                                                                                    | ✓ RTL                                                                             |
-| -                                                                                                    | ✓ JWT authentications                                                             |
-| -                                                                                                    | ✓ [More components](https://mantisdashboard.com/components-overview/autocomplete) |
-| ✓ [MIT License](https://github.com/codedthemes/mantis-free-react-admin-template/blob/master/LICENSE) | ✓ [Pro License](https://mui.com/store/license/)                                   |
+## Pages
 
-## Documentation
+- **/dashboard** - Overview with KPIs and charts
+- **/library** - Browse all stories and downloaded stories
+- **/player/:id** - Story player with audio controls
+- **/billing** - Subscription and payment management
+- **/settings** - App preferences and configuration
+- **/profile** - Parent profile and children management
 
-[Mantis documentation](https://codedthemes.gitbook.io/mantis) helps you out in all aspects from Installation to deployment.
+## Features Showcase
 
-## Browser support
+### Dashboard
+- KPI cards showing listening statistics
+- Welcome card with app introduction
+- Featured "Calm Mode" card
+- Bar chart for listening sessions
+- Line chart for sleep calm scores
 
-<img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/chrome.png" width="45" height="45" > <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/edge.png" width="45" height="45" > <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/safari.png" width="45" height="45" > <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/firefox.png" width="45" height="45" > <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/opera.png" width="45" height="45" >
+### Story Library
+- Table view with story details
+- Cover thumbnails
+- Age range, duration, and category filters
+- Status badges (NEW, POPULAR, DOWNLOADED)
+- Quick play buttons
 
-## Technology Stack
+### Story Player
+- Large story cover display
+- Scrollable story text
+- Audio controls (play/pause, progress bar)
+- Speed selector (0.8x - 1.5x)
+- Voice selector dropdown
+- Night mode toggle
+- Customization prompt buttons
 
-- Material UI V7
-- Built with React Hooks API.
-- React context API for state management.
-- SWR.
-- React Router for navigation routing.
-- Support for Vite.
-- Code splitting.
-- CSS-in-JS.
+### Billing
+- Payment card display
+- Basic vs Premium plan comparison
+- Invoice history with downloads
+- Billing address management
 
-## Mantis Figma UI Kit
+### Settings
+- Notification preferences
+- Playback settings
+- Appearance customization
+- Download quality options
+- Privacy controls
 
-| FREE                                                                                                                                                                                                             | PRO                                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a href="https://codedthemes.com/item/mantis-free-figma-ui-kit/" traget="_blank"><img src="https://org-public-assets.s3.us-west-2.amazonaws.com/Banners/Figma_Free_Mantis.png" width="450" alt="Figma Free"></a> | <a href="https://codedthemes.com/item/mantis-figma-ui-kit/" traget="_blank"><img src="https://org-public-assets.s3.us-west-2.amazonaws.com/Banners/Figma_Pro_Mantis.png" width="450" alt="Figma Pro"></a> |
+### Profile
+- Parent information display
+- Children profiles management
+- Account statistics
+- Account actions (password, export, delete)
 
-## Other Technologies
+## Customization
 
-| Technology                                                                                                                        | Free                                                                               | Pro                                                                       |
-| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| <p align="center"><img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Angular.png" width="25" height="25"></p>   | [**Free**](https://codedthemes.com/item/mantis-angular-free-admin-template/)       | [**Pro**](https://codedthemes.com/item/mantis-angular-admin-template/)    |
-| <p align="center"><img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Bootstrap.png" width="30" height="30"></p> | [**Free**](https://codedthemes.com/item/mantis-bootstrap-free-admin-template/)     | [**Pro**](https://codedthemes.com/item/mantis-bootstrap-admin-dashboard/) |
-| <p align="center"><img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Vue.png" width="25" height="25"></p>       | [**Free**](https://codedthemes.com/item/mantis-free-vuetify-vuejs-admin-template/) | [**Pro**](https://codedthemes.com/item/mantis-vue-admin-template/)        |
+### Colors
+Edit `tailwind.config.js` to change the primary colors:
+```js
+colors: {
+  primary: {
+    DEFAULT: '#10b981',  // Green
+    dark: '#059669',
+  }
+}
+```
 
-## Save more with Big Bundle
+### Stories
+Add or modify stories in `src/data/mock.ts`
 
-[![bundle-image](https://org-public-assets.s3.us-west-2.amazonaws.com/Banners/Bundle+banner.png)](https://links.codedthemes.com/jhFBJ)
+### Routes
+Add new routes in `src/App.tsx` and create corresponding page components
 
-## More React Dashboard Templates
+## Mobile Responsive
 
-| Dashboard                                                                                                                                                          | FREE                                                                                | PRO                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Berry%20with%20name.png"  height="30" style="display:inline-block; vertical-align:middle;">   | [**Free**](https://codedthemes.com/item/berry-mui-free-react-admin-template/)       | [**Pro**](https://codedthemes.com/item/berry-material-react-admin-template/)</span>   |
-| <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Datta%20with%20name.png" height="30" style="display:inline-block; vertical-align:middle;">    | [**Free**](https://codedthemes.com/item/datta-able-react-free-admin-template/)      | [**Pro**](https://codedthemes.com/item/datta-able-react-admin-template/)</span>       |
-| <img src="https://org-public-assets.s3.us-west-2.amazonaws.com/logos/Gradient%20with%20name.png" height="30" style="display:inline-block; vertical-align:middle;"> | [**Free**](https://codedthemes.com/item/gradient-able-reactjs-free-admin-template/) | [**Pro**](https://codedthemes.com/item/gradient-able-reactjs-admin-dashboard/)</span> |
-
-## Issues
-
-Please generate a [Github issue](https://github.com/codedthemes/mantis-free-react-admin-template/issues) if you found a bug in any version. We are try our best to resolve the issue.
+The app is fully responsive with:
+- Collapsible sidebar (hamburger menu on mobile)
+- Stacked card layouts on smaller screens
+- Touch-friendly buttons and controls
+- Optimized typography and spacing
 
 ## License
 
-- Licensed under [MIT](https://github.com/codedthemes/mantis-free-react-admin-template/blob/master/LICENSE)
-- Copyright © [CodedThemes](https://codedthemes.com/)
-
-## Contributor
-
-**CodedThemes Team**
-
-- https://x.com/codedthemes
-- https://github.com/codedthemes
-
-**Rakesh Nakrani**
-
-- https://x.com/rakesh_nakrani
-
-**Brijesh Dobariya**
-
-- https://x.com/dobaria_brijesh
-
-## Useful Resources
-
-- [More Admin Templates From CodedThemes](https://codedthemes.com/item/category/admin-templates/)
-- [Freebies From CodedThemes](https://codedthemes.com/item/category/free-templates/)
-- [Big Bundles](https://codedthemes.com/item/big-bundle/)
-- [Figma UI Kits](https://codedthemes.com/item/category/templates/figma/)
-- [Affiliate Program](https://codedthemes.com/affiliate/)
-- [Blogs](https://blog.codedthemes.com/)
-
-## Community
-
-- 👥Follow [@codedThemes](https://x.com/codedthemes)
-- 🔗Join [Discord](https://discord.com/invite/p2E2WhCb6s)
-- 🔔Subscribe to [CodedTheme Blogs](https://blog.codedthemes.com/)
-
-## Follow Us
-
-- [Twitter](https://twitter.com/codedthemes) 🐦
-- [Dribbble](https://dribbble.com/codedthemes) 🏀
-- [Github](https://github.com/codedthemes) 🐙
-- [LinkedIn](https://www.linkedin.com/company/codedthemes/) 💼
-- [Instagram](https://www.instagram.com/codedthemes/) 📷
-- [Facebook](https://www.facebook.com/codedthemes) 🟦
+This project is for demonstration purposes.
