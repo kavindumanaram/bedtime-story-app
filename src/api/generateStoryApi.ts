@@ -15,10 +15,17 @@ export type GeneratedStory = {
  * Call the story-generation POST endpoint.
  * The API expects a JSON body with a stringified `body` field.
  */
-export async function generateStory(params: GenerateStoryParams): Promise<GeneratedStory | string> {
-  const url = "https://xk9k3oja8b.execute-api.ap-southeast-2.amazonaws.com/generate-story";
+export async function generateStory(
+  params: GenerateStoryParams,
+): Promise<GeneratedStory | string> {
+  const url =
+    "https://xk9k3oja8b.execute-api.ap-southeast-2.amazonaws.com/generate-story";
   const payload = {
-    body: JSON.stringify({ childName: params.childName, age: params.age, theme: params.theme }),
+    body: JSON.stringify({
+      childName: params.childName,
+      age: params.age,
+      theme: params.theme,
+    }),
   };
 
   const res = await fetch(url, {

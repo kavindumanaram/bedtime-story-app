@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   pages?: string[];
@@ -25,18 +25,15 @@ export default function LargeStoryPlayer({
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const intervalRef = useRef<number | null>(null);
 
+  // Friendly, child-oriented images (Pexels placeholders)
   const DEFAULT_PAGES = [
-    "https://images.pexels.com/photos/417074/pexels-photo-417074.jpeg",
-    "https://images.pexels.com/photos/35389652/pexels-photo-35389652.jpeg",
-    "https://images.pexels.com/photos/1435075/pexels-photo-1435075.jpeg",
+    "https://images.pexels.com/photos/3662622/pexels-photo-3662622.jpeg",
+    "https://images.pexels.com/photos/3747416/pexels-photo-3747416.jpeg",
+    "https://images.pexels.com/photos/374054/pexels-photo-374054.jpeg",
   ];
 
-  const total = Math.max(
-    pages.length || 0,
-    subtitles.length || DEFAULT_PAGES.length,
-    DEFAULT_PAGES.length,
-  );
-  const img = pages[index] || DEFAULT_PAGES[index % DEFAULT_PAGES.length];
+  const total = Math.max(pages?.length || 0, subtitles?.length || DEFAULT_PAGES.length, DEFAULT_PAGES.length);
+  const img = (pages && pages.length ? pages : DEFAULT_PAGES)[index % total];
   const subtitle = subtitles[index] || "";
 
   useEffect(() => {
@@ -48,10 +45,9 @@ export default function LargeStoryPlayer({
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
     try {
-      if (!document.fullscreenElement)
-        await (containerRef.current as any).requestFullscreen();
+      if (!document.fullscreenElement) await (containerRef.current as any).requestFullscreen();
       else await document.exitFullscreen();
-    } catch (e) {
+    } catch (_) {
       /* ignore */
     }
   };
@@ -86,9 +82,7 @@ export default function LargeStoryPlayer({
     intervalRef.current = window.setInterval(() => {
       setIndex((i) => {
         const next = Math.min(total - 1, i + 1);
-        if (next === i) {
-          stopAuto();
-        }
+        if (next === i) stopAuto();
         return next;
       });
     }, autoAdvanceMs) as unknown as number;
@@ -116,28 +110,15 @@ export default function LargeStoryPlayer({
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full rounded-lg overflow-hidden bg-black"
-    >
+    <div ref={containerRef} className="w-full rounded-lg overflow-hidden bg-black">
       <div className="relative w-full" style={{ height: "520px" }}>
-        <img
-          src={img}
-          alt={`page-${index + 1}`}
-          className="w-full h-full object-cover"
-          style={{ filter: "brightness(0.75)" }}
-        />
+        <img src={img} alt={`page-${index + 1}`} className="w-full h-full object-cover" style={{ filter: "brightness(0.75)" }} />
 
-        {/* subtitle bar */}
         <div className="absolute left-0 right-0 bottom-0 p-5 bg-gradient-to-t from-black/70 to-transparent">
-          <div className="text-white font-extrabold text-2xl text-center">
-            {subtitle}
-          </div>
+          <div className="text-white font-extrabold text-2xl text-center">{subtitle}</div>
         </div>
 
-        {/* small icons top-right */}
         <div className="absolute top-3 right-3 flex gap-2">
-          {/* Details toggle button (shows story text / customization) */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -146,21 +127,21 @@ export default function LargeStoryPlayer({
             }}
             aria-label={isPlayingAudio ? "Stop audio" : "Play audio"}
             title={isPlayingAudio ? "Stop audio" : "Play audio"}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${isPlayingAudio ? "bg-red-600 text-white" : "bg-white"}`}
-          >
+            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${isPlayingAudio ? "bg-red-600 text-white" : "bg-white"}`}>
             {isPlayingAudio ? (
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <rect x="6" y="5" width="4" height="14" fill="#fff" />
-                <rect x="14" y="5" width="4" height="14" fill="#fff" />
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                <g fill="none" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="6" y="5" width="4" height="14" rx="1" fill="#fff" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" fill="#fff" />
+                </g>
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path d="M5 3L19 12L5 21V3Z" fill="#1976d2" />
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                <path d="M5 4.5L19 12L5 19.5V4.5Z" fill="#ff6b6b" />
               </svg>
             )}
           </button>
 
-          {/* Details toggle */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -168,13 +149,11 @@ export default function LargeStoryPlayer({
             }}
             aria-label="Toggle details"
             title={detailsOpen ? "Hide details" : "Show details"}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${detailsOpen ? "bg-blue-600 text-white" : "bg-white"}`}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path
-                d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zM3 5h2V3H3v2zm4 12h14v-2H7v2zM7 9h14V7H7v2zm0-6v2h14V3H7z"
-                fill="#1976d2"
-              />
+            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${detailsOpen ? "bg-blue-600 text-white" : "bg-white"}`}>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+              <circle cx="12" cy="7" r="2.2" fill="#FFD166" />
+              <rect x="4" y="11" width="16" height="2.6" rx="1" fill="#06D6A0" />
+              <rect x="4" y="15" width="10" height="2.6" rx="1" fill="#118AB2" />
             </svg>
           </button>
 
@@ -186,22 +165,15 @@ export default function LargeStoryPlayer({
             }}
             aria-label={isAutoReading ? "Stop reading" : "Start reading"}
             title={isAutoReading ? "Stop reading" : "Start reading"}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${isAutoReading ? "bg-orange-500 text-white" : "bg-white"}`}
-          >
+            className={`w-10 h-10 rounded-full flex items-center justify-center shadow ${isAutoReading ? "bg-orange-500 text-white" : "bg-white"}`}>
             {isAutoReading ? (
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path d="M7 7L17 12L7 17V7Z" fill="#fff" />
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                <path d="M7 7L17 12L7 17V7Z" fill="#ffffff" />
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path
-                  d="M12 2C6.48 2 2 6.48 2 12H4c0-4.42 3.58-8 8-8V2z"
-                  fill="#388e3c"
-                />
-                <path
-                  d="M12 22c5.52 0 10-4.48 10-10h-2c0 4.42-3.58 8-8 8v2z"
-                  fill="#388e3c"
-                />
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                <path d="M3 5c0 6.627 5.373 12 12 12v-2c-5.523 0-10-4.477-10-10H3z" fill="#ffd54f" />
+                <path d="M21 12c0 1.1-.9 2-2 2v-4c1.1 0 2 .9 2 2z" fill="#ffb4a2" />
               </svg>
             )}
           </button>
@@ -213,26 +185,21 @@ export default function LargeStoryPlayer({
             }}
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
             title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            className="w-10 h-10 rounded-full flex items-center justify-center shadow bg-white"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path
-                d="M3 3H9V5H5V9H3V3ZM21 3V9H19V5H15V3H21ZM3 15H5V19H9V21H3V15ZM15 21H21V15H19V19H15V21Z"
-                fill="#1976d2"
-              />
+            className="w-10 h-10 rounded-full flex items-center justify-center shadow bg-white">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+              <path d="M4 4h6v2H6v4H4V4z" fill="#06D6A0" />
+              <path d="M20 20h-6v-2h4v-4h2v6z" fill="#118AB2" />
             </svg>
           </button>
         </div>
 
-        {/* side prev/next */}
         <button
           onClick={() => {
             stopSpeech();
             setIndex((i) => Math.max(0, i - 1));
           }}
           disabled={index === 0}
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow"
-        >
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow">
           ◀
         </button>
 
@@ -242,15 +209,12 @@ export default function LargeStoryPlayer({
             setIndex((i) => Math.min(total - 1, i + 1));
           }}
           disabled={index === total - 1}
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow"
-        >
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow">
           ▶
         </button>
       </div>
 
-      <div className="mt-3 text-center text-sm text-gray-600">
-        Page {index + 1} of {total}
-      </div>
+      <div className="mt-3 text-center text-sm text-gray-600">Page {index + 1} of {total}</div>
     </div>
   );
 }

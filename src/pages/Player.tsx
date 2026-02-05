@@ -14,7 +14,7 @@ export const Player: React.FC = () => {
   const [nightMode, setNightMode] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
-  // Generation inputs
+  // generation inputs
   const [childName, setChildName] = useState("Dimuth");
   const [childAge, setChildAge] = useState<number>(6);
   const [theme, setTheme] = useState("friendly Chinese dragon");
@@ -85,7 +85,7 @@ export const Player: React.FC = () => {
     } finally {
       setGenLoading(false);
     }
-  }; 
+  };
 
   return (
     <div className={`space-y-6 ${nightMode ? "bg-gray-900" : ""}`}>
@@ -122,11 +122,15 @@ export const Player: React.FC = () => {
         {/* Left: Large visual story player */}
         <Card className={`p-6 ${nightMode ? "bg-gray-800" : ""}`}>
           <LargeStoryPlayer
-            pages={[
-              `https://picsum.photos/seed/${currentStory.id || story.id}-a/1200/800`,
-              `https://picsum.photos/seed/${currentStory.id || story.id}-b/1200/800`,
-              `https://picsum.photos/seed/${currentStory.id || story.id}-c/1200/800`,
-            ]}
+            pages={
+              currentStory.pages && currentStory.pages.length
+                ? currentStory.pages
+                : [
+                    `https://picsum.photos/seed/${currentStory.id || story.id}-a/1200/800`,
+                    `https://picsum.photos/seed/${currentStory.id || story.id}-b/1200/800`,
+                    `https://picsum.photos/seed/${currentStory.id || story.id}-c/1200/800`,
+                  ]
+            }
             subtitles={currentStory.text.slice(0, 3)}
             autoAdvanceMs={4500}
             initialIndex={0}
@@ -139,22 +143,22 @@ export const Player: React.FC = () => {
               <h2
                 className={`text-2xl font-bold mb-2 ${nightMode ? "text-white" : "text-gray-900"}`}
               >
-                {currentStory.title}
+                {story.title}
               </h2>
               <p
                 className={`text-sm ${nightMode ? "text-gray-400" : "text-gray-600"}`}
               >
-                {currentStory.summary}
+                {story.summary}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Badge variant={getBadgeVariant(currentStory.status)}>
-                {currentStory.status}
+              <Badge variant={getBadgeVariant(story.status)}>
+                {story.status}
               </Badge>
-              <Badge>{currentStory.category}</Badge>
-              <Badge>Ages {currentStory.ageRange}</Badge>
-              <Badge>{currentStory.duration}</Badge>
+              <Badge>{story.category}</Badge>
+              <Badge>Ages {story.ageRange}</Badge>
+              <Badge>{story.duration}</Badge>
             </div>
           </div>
         </Card>
@@ -173,14 +177,14 @@ export const Player: React.FC = () => {
               ${nightMode ? "text-gray-300" : "text-gray-700"}
             `}
             >
-              {currentStory.text.map((paragraph, index) => (
+              {story.text.map((paragraph, index) => (
                 <p key={index} className="leading-relaxed">
                   {paragraph}
                 </p>
               ))}
             </div>
           </Card>
-        )} 
+        )}
       </div>
 
       {/* Suggested Prompts */}

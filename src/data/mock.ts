@@ -8,6 +8,8 @@ export interface Story {
   status: 'NEW' | 'POPULAR' | 'DOWNLOADED';
   summary: string;
   text: string[];
+  // optional per-story full-page images
+  pages?: string[];
 }
 
 export const stories: Story[] = [
@@ -20,6 +22,11 @@ export const stories: Story[] = [
     category: 'Nature',
     status: 'POPULAR',
     summary: 'A gentle tale about the moon singing bedtime songs to all the children of the world.',
+    pages: [
+      'https://images.pexels.com/photos/30864661/pexels-photo-30864661.jpeg',
+      'https://images.pexels.com/photos/417074/pexels-photo-417074.jpeg',
+      'https://images.pexels.com/photos/35389652/pexels-photo-35389652.jpeg'
+    ],
     text: [
       'High above the sleeping world, the moon floated gently in the starry sky. Every night, she had a special job to do - to sing lullabies to all the children who were going to sleep.',
       'Tonight, the moon\'s silvery voice carried across mountains and oceans, through open windows and cozy bedrooms. Her song was soft and soothing, like a warm blanket made of stardust.',
@@ -36,6 +43,11 @@ export const stories: Story[] = [
     category: 'Fantasy',
     status: 'NEW',
     summary: 'Journey to a magical village built on clouds where everything is soft and peaceful.',
+    pages: [
+      'https://images.pexels.com/photos/3747416/pexels-photo-3747416.jpeg',
+      'https://images.pexels.com/photos/3662622/pexels-photo-3662622.jpeg',
+      'https://images.pexels.com/photos/374054/pexels-photo-374054.jpeg'
+    ],
     text: [
       'Far above the world, there existed a secret village made entirely of clouds. The houses were fluffy and white, and the streets were soft beneath everyone\'s feet.',
       'In this cloud village lived the Dreamweavers - gentle beings who spent their days creating beautiful dreams for children. They worked in cozy workshops, spinning threads of starlight and moonbeams.',
@@ -43,6 +55,7 @@ export const stories: Story[] = [
       'Tonight, they had created an especially wonderful dream just for you - filled with adventures, laughter, and all the things that make you happiest. Close your eyes, and it will find you soon.'
     ]
   },
+
   {
     id: '3',
     title: 'The Whispering Forest',
