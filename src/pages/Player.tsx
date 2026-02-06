@@ -63,7 +63,15 @@ export const Player: React.FC = () => {
         newStory.title = `A Story for ${childName}`;
         newStory.summary = newStory.text[0] || "";
       } else if (typeof res === "object") {
-        if (Array.isArray(res.text)) {
+        // Handle new API format with paragraphs array
+        if (Array.isArray(res.paragraphs) && res.paragraphs.length > 0) {
+          newStory.text = res.paragraphs
+            .sort((a: any, b: any) => (a.paragraphIndex || 0) - (b.paragraphIndex || 0))
+            .map((p: any) => p.text || "");
+          newStory.id = res.storyId;
+          newStory.title = res.title || `A Story for ${childName}`;
+          newStory.summary = newStory.text[0] || "";
+        } else if (Array.isArray(res.text)) {
           newStory.text = res.text;
         } else if (typeof res.text === "string") {
           newStory.text = (res.text as string)
@@ -122,18 +130,25 @@ export const Player: React.FC = () => {
     setCompletedImagesCount(0);
 
     try {
-      // Generate images for up to 3 paragraphs
+      // Generate images for all paragraphs
       const storyId = pendingStory.id || `story-${Date.now()}`;
-      const paragraphsToGenerate = (pendingStory.text || []).slice(0, 3);
-      const pages: string[] = [];
+      const allParagraphs = (pendingStory.text || [])
+        .map((p: string) => (p || "").trim())
+        .filter((p: string) => p.length > 0);
+      
+      // Generate for all paragraphs
+      const indicesToGenerate = allParagraphs.map((_, i) => i);
+      console.log(`Total paragraphs: ${allParagraphs.length}, Generating images for all ${indicesToGenerate.length} paragraphs`);
+      const pages: string[] = new Array(allParagraphs.length);
       const requestIds: Array<{ requestId: string; paragraphIndex: number }> =
         [];
 
-      // Step 1: Send requests for all paragraphs
-      for (let i = 0; i < paragraphsToGenerate.length; i++) {
+      // Step 1: Send requests for indices 0 and 2
+      for (let idx = 0; idx < indicesToGenerate.length; idx++) {
+        const i = indicesToGenerate[idx];
         try {
           const response = await generateImage({
-            paragraph: paragraphsToGenerate[i],
+            paragraph: allParagraphs[i],
             storyId,
             paragraphIndex: i,
           });
@@ -148,7 +163,7 @@ export const Player: React.FC = () => {
       // Attach a `.then` to each poll promise so we log the response as soon as
       // an image becomes complete.
       const promises = requestIds.map((req) =>
-        waitForImageGeneration(req.requestId, 60, 3000).then((res) => {
+        waitForImageGeneration(req.requestId, 60, 30000).then((res) => {
           console.log("Image generation complete:", res);
           if (res.image?.url) {
             console.log(`✓ Paragraph ${res.paragraphIndex}: ${res.image.url}`);
@@ -173,15 +188,15 @@ export const Player: React.FC = () => {
         }
       });
 
-      // Build pages array in order
-      for (let i = 0; i < paragraphsToGenerate.length; i++) {
-        pages.push(
-          imageMap[i] || `https://picsum.photos/seed/${storyId}-${i}/1200/800`,
-        );
+      // Build pages array in order - use black background for missing images
+      const BLACK_BG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
+      for (let i = 0; i < allParagraphs.length; i++) {
+        pages[i] = imageMap[i] || BLACK_BG;
       }
 
       // Step 4: Save to localStorage and update story
       const storageKey = `story-images-${storyId}`;
+      console.log(`Final pages array: ${JSON.stringify(pages.map((p, i) => `[${i}]: ${p.substring(0, 50)}...`))}`);
       localStorage.setItem(storageKey, JSON.stringify(pages));
 
       pendingStory.pages = pages;
@@ -243,7 +258,16 @@ export const Player: React.FC = () => {
                 ? currentStory.pages
                 : undefined
             }
-            subtitles={currentStory.text.slice(0, 3)}
+            subtitles={(() => {
+              if (!currentStory.text || currentStory.text.length === 0) return [];
+              const totalParagraphs = currentStory.text.length;
+              const partSize = Math.ceil(totalParagraphs / 3);
+              return [
+                currentStory.text[0] || "",
+                currentStory.text[Math.min(partSize, totalParagraphs - 1)] || "",
+                currentStory.text[totalParagraphs - 1] || "",
+              ];
+            })()}
             initialIndex={0}
             onToggleDetails={() => setShowDetails((s) => !s)}
             detailsOpen={showDetails}
@@ -255,12 +279,12 @@ export const Player: React.FC = () => {
               <h2
                 className={`text-2xl font-bold mb-2 ${nightMode ? "text-white" : "text-gray-900"}`}
               >
-                {story.title}
+                {currentStory.title || story.title}
               </h2>
               <p
                 className={`text-sm ${nightMode ? "text-gray-400" : "text-gray-600"}`}
               >
-                {story.summary}
+                {currentStory.summary || story.summary}
               </p>
             </div>
 
@@ -289,7 +313,7 @@ export const Player: React.FC = () => {
               ${nightMode ? "text-gray-300" : "text-gray-700"}
             `}
             >
-              {story.text.map((paragraph, index) => (
+              {(currentStory.text || story.text).map((paragraph, index) => (
                 <p key={index} className="leading-relaxed">
                   {paragraph}
                 </p>

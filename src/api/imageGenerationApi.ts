@@ -77,12 +77,12 @@ export async function getImageStatus(
 }
 
 /**
- * Poll status with retries (max 30 retries, 1s apart = 30 seconds total)
+ * Poll status with retries (default delay 30s between checks)
  */
 export async function waitForImageGeneration(
   requestId: string,
   maxRetries: number = 30,
-  delayMs: number = 1000,
+  delayMs: number = 30000,
 ): Promise<GenerateImageResponse> {
   let retries = 0;
 

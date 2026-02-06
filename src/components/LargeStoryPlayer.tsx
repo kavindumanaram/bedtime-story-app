@@ -129,10 +129,13 @@ export default function LargeStoryPlayer({
           alt={`page-${index + 1}`}
           className="w-full h-full object-cover"
           style={{ filter: "brightness(0.75)" }}
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
+          }}
         />
 
-        <div className="absolute left-0 right-0 bottom-0 p-5 bg-gradient-to-t from-black/70 to-transparent">
-          <div className="text-white font-extrabold text-2xl text-center">
+        <div className="absolute left-0 right-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
+          <div className="text-white font-extrabold text-2xl text-center leading-relaxed">
             {subtitle}
           </div>
         </div>

@@ -12,6 +12,9 @@ export default function StoryGenerationSpinner({
   nightMode = false,
 }: Props) {
   const [animatedCount, setAnimatedCount] = useState(0);
+  const [displayedProgress, setDisplayedProgress] = useState(
+    Math.floor((completedImages / Math.max(1, totalImages)) * 100),
+  );
 
   // Animate the counter up to completedImages
   useEffect(() => {
@@ -20,6 +23,12 @@ export default function StoryGenerationSpinner({
       return () => clearTimeout(timer);
     }
   }, [animatedCount, completedImages]);
+
+  // Update progress bar based on completed images (e.g., 1/4 = 25%, 2/4 = 50%)
+  useEffect(() => {
+    const percentage = Math.floor((completedImages / Math.max(1, totalImages)) * 100);
+    setDisplayedProgress(percentage);
+  }, [completedImages, totalImages]);
 
   const paragraphs = Array.from({ length: totalImages }, (_, i) => ({
     index: i,
@@ -151,7 +160,7 @@ export default function StoryGenerationSpinner({
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500 ease-out"
               style={{
-                width: `${(animatedCount / totalImages) * 100}%`,
+                width: `${displayedProgress}%`,
               }}
             />
           </div>
