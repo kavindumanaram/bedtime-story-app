@@ -5,6 +5,11 @@ import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
 import { stories } from "../data/mock";
 import { generateStory } from "../api/generateStoryApi";
+import {
+  generateImage,
+  waitForImageGeneration,
+} from "../api/imageGenerationApi";
+import StoryGenerationSpinner from "../components/StoryGenerationSpinner";
 import { Moon, Sparkles, Wand2, MapPin } from "lucide-react";
 
 export const Player: React.FC = () => {
@@ -19,6 +24,10 @@ export const Player: React.FC = () => {
   const [childAge, setChildAge] = useState<number>(6);
   const [theme, setTheme] = useState("friendly Chinese dragon");
   const [genLoading, setGenLoading] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingStory, setPendingStory] = useState<any>(null);
+  const [imgGenLoading, setImgGenLoading] = useState(false);
+  const [completedImagesCount, setCompletedImagesCount] = useState(0);
 
   const prompts = [
     { text: "Make it calmer", icon: Moon },
@@ -47,26 +56,42 @@ export const Player: React.FC = () => {
       const newStory: any = { ...currentStory };
 
       if (typeof res === "string") {
-        newStory.text = (res as string).split("\n\n").map((p: string) => p.trim()).filter(Boolean) as string[];
+        newStory.text = (res as string)
+          .split("\n\n")
+          .map((p: string) => p.trim())
+          .filter(Boolean) as string[];
         newStory.title = `A Story for ${childName}`;
         newStory.summary = newStory.text[0] || "";
       } else if (typeof res === "object") {
         if (Array.isArray(res.text)) {
           newStory.text = res.text;
         } else if (typeof res.text === "string") {
-          newStory.text = (res.text as string).split("\n\n").map((p: string) => p.trim()).filter(Boolean) as string[];
+          newStory.text = (res.text as string)
+            .split("\n\n")
+            .map((p: string) => p.trim())
+            .filter(Boolean) as string[];
         } else if (typeof res.story === "string") {
-          newStory.text = (res.story as string).split("\n\n").map((p: string) => p.trim()).filter(Boolean) as string[];
+          newStory.text = (res.story as string)
+            .split("\n\n")
+            .map((p: string) => p.trim())
+            .filter(Boolean) as string[];
         } else if (res.body) {
           if (typeof res.body === "string") {
             try {
               const parsed = JSON.parse(res.body);
               if (Array.isArray(parsed.text)) newStory.text = parsed.text;
-              else if (typeof parsed.text === "string") newStory.text = (parsed.text as string).split("\n\n").map((p: string) => p.trim()).filter(Boolean) as string[];
+              else if (typeof parsed.text === "string")
+                newStory.text = (parsed.text as string)
+                  .split("\n\n")
+                  .map((p: string) => p.trim())
+                  .filter(Boolean) as string[];
             } catch {
               newStory.text = [String(res.body)];
             }
-          } else if (typeof res.body === "object" && Array.isArray(res.body.text)) {
+          } else if (
+            typeof res.body === "object" &&
+            Array.isArray(res.body.text)
+          ) {
             newStory.text = res.body.text;
           }
         } else {
@@ -74,17 +99,108 @@ export const Player: React.FC = () => {
         }
 
         newStory.title = newStory.title || `A Story for ${childName}`;
-        newStory.summary = newStory.summary || (newStory.text && newStory.text[0]) || "";
+        newStory.summary =
+          newStory.summary || (newStory.text && newStory.text[0]) || "";
       }
 
       setCurrentStory(newStory);
-      setShowDetails(true);
+      setPendingStory(newStory);
+      setShowConfirmDialog(true);
     } catch (e) {
       console.error(e);
       alert("Failed to generate story (see console)");
     } finally {
       setGenLoading(false);
     }
+  };
+
+  const handleConfirmAndGenerateImages = async () => {
+    if (!pendingStory) return;
+
+    setImgGenLoading(true);
+    setShowConfirmDialog(false);
+    setCompletedImagesCount(0);
+
+    try {
+      // Generate images for up to 3 paragraphs
+      const storyId = pendingStory.id || `story-${Date.now()}`;
+      const paragraphsToGenerate = (pendingStory.text || []).slice(0, 3);
+      const pages: string[] = [];
+      const requestIds: Array<{ requestId: string; paragraphIndex: number }> =
+        [];
+
+      // Step 1: Send requests for all paragraphs
+      for (let i = 0; i < paragraphsToGenerate.length; i++) {
+        try {
+          const response = await generateImage({
+            paragraph: paragraphsToGenerate[i],
+            storyId,
+            paragraphIndex: i,
+          });
+          requestIds.push({ requestId: response.requestId, paragraphIndex: i });
+          console.log(`Image gen started for para ${i}: ${response.requestId}`);
+        } catch (e) {
+          console.error(`Failed to start image gen for para ${i}:`, e);
+        }
+      }
+
+      // Step 2: Poll status for all requests (check every 3 seconds).
+      // Attach a `.then` to each poll promise so we log the response as soon as
+      // an image becomes complete.
+      const promises = requestIds.map((req) =>
+        waitForImageGeneration(req.requestId, 60, 3000).then((res) => {
+          console.log("Image generation complete:", res);
+          if (res.image?.url) {
+            console.log(`✓ Paragraph ${res.paragraphIndex}: ${res.image.url}`);
+          }
+          // Increment completed count
+          setCompletedImagesCount((prev) => prev + 1);
+          return res;
+        }),
+      );
+
+      const results = await Promise.allSettled(promises);
+
+      // Step 3: Extract image URLs in order
+      const imageMap: { [key: number]: string } = {};
+      results.forEach((result, idx) => {
+        if (result.status === "fulfilled" && result.value.image?.url) {
+          const pIdx = requestIds[idx].paragraphIndex;
+          imageMap[pIdx] = result.value.image.url;
+          console.log(
+            `→ Assigned to paragraph ${pIdx}: ${result.value.image.url}`,
+          );
+        }
+      });
+
+      // Build pages array in order
+      for (let i = 0; i < paragraphsToGenerate.length; i++) {
+        pages.push(
+          imageMap[i] || `https://picsum.photos/seed/${storyId}-${i}/1200/800`,
+        );
+      }
+
+      // Step 4: Save to localStorage and update story
+      const storageKey = `story-images-${storyId}`;
+      localStorage.setItem(storageKey, JSON.stringify(pages));
+
+      pendingStory.pages = pages;
+      pendingStory.id = storyId;
+      setCurrentStory(pendingStory);
+      setPendingStory(null);
+    } catch (e) {
+      console.error("Image generation error:", e);
+      alert("Image generation failed. Using default images.");
+      setCurrentStory(pendingStory);
+      setPendingStory(null);
+    } finally {
+      setImgGenLoading(false);
+    }
+  };
+
+  const handleRejectStory = () => {
+    setShowConfirmDialog(false);
+    setPendingStory(null);
   };
 
   return (
@@ -125,17 +241,13 @@ export const Player: React.FC = () => {
             pages={
               currentStory.pages && currentStory.pages.length
                 ? currentStory.pages
-                : [
-                    `https://picsum.photos/seed/${currentStory.id || story.id}-a/1200/800`,
-                    `https://picsum.photos/seed/${currentStory.id || story.id}-b/1200/800`,
-                    `https://picsum.photos/seed/${currentStory.id || story.id}-c/1200/800`,
-                  ]
+                : undefined
             }
             subtitles={currentStory.text.slice(0, 3)}
-            autoAdvanceMs={4500}
             initialIndex={0}
             onToggleDetails={() => setShowDetails((s) => !s)}
             detailsOpen={showDetails}
+            storyId={currentStory.id}
           />
 
           <div className="mt-6 space-y-4">
@@ -219,9 +331,9 @@ export const Player: React.FC = () => {
             <button
               onClick={handleGenerate}
               disabled={genLoading}
-              className={`px-4 py-2 rounded-lg font-medium ${genLoading ? 'bg-gray-400 text-white' : 'bg-blue-600 text-white'}`}
+              className={`px-4 py-2 rounded-lg font-medium ${genLoading ? "bg-gray-400 text-white" : "bg-blue-600 text-white"}`}
             >
-              {genLoading ? 'Generating...' : 'Generate'}
+              {genLoading ? "Generating..." : "Generate"}
             </button>
           </div>
 
@@ -253,6 +365,66 @@ export const Player: React.FC = () => {
             Click any prompt to customize the story experience (UI demo)
           </p>
         </Card>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && pendingStory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card
+            className={`w-full max-w-2xl p-8 ${nightMode ? "bg-gray-800" : "bg-white"}`}
+          >
+            <h2
+              className={`text-2xl font-bold mb-4 ${nightMode ? "text-white" : "text-gray-900"}`}
+            >
+              Review Your Story
+            </h2>
+            <div
+              className={`space-y-4 max-h-96 overflow-y-auto mb-6 ${nightMode ? "text-gray-300" : "text-gray-700"}`}
+            >
+              <div>
+                <h3
+                  className={`text-lg font-semibold ${nightMode ? "text-white" : ""}`}
+                >
+                  {pendingStory.title}
+                </h3>
+                <p className="text-sm mt-1">{pendingStory.summary}</p>
+              </div>
+              <div className="space-y-2">
+                {(pendingStory.text || []).map((p: string, i: number) => (
+                  <p key={i} className="text-sm leading-relaxed">
+                    {p}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleRejectStory}
+                className="px-6 py-2 rounded-lg font-medium bg-gray-400 text-white hover:bg-gray-500"
+              >
+                Edit Story
+              </button>
+              <button
+                onClick={handleConfirmAndGenerateImages}
+                disabled={imgGenLoading}
+                className={`px-6 py-2 rounded-lg font-medium ${imgGenLoading ? "bg-blue-400 text-white" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+              >
+                {imgGenLoading
+                  ? "Generating Images..."
+                  : "Confirm & Generate Images"}
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Image Generation Spinner */}
+      {imgGenLoading && (
+        <StoryGenerationSpinner
+          totalImages={pendingStory?.text?.length || 3}
+          completedImages={completedImagesCount}
+          nightMode={nightMode}
+        />
       )}
     </div>
   );
