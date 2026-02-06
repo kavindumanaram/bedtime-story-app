@@ -66,7 +66,10 @@ export const Player: React.FC = () => {
         // Handle new API format with paragraphs array
         if (Array.isArray(res.paragraphs) && res.paragraphs.length > 0) {
           newStory.text = res.paragraphs
-            .sort((a: any, b: any) => (a.paragraphIndex || 0) - (b.paragraphIndex || 0))
+            .sort(
+              (a: any, b: any) =>
+                (a.paragraphIndex || 0) - (b.paragraphIndex || 0),
+            )
             .map((p: any) => p.text || "");
           newStory.id = res.storyId;
           newStory.title = res.title || `A Story for ${childName}`;
@@ -135,10 +138,12 @@ export const Player: React.FC = () => {
       const allParagraphs = (pendingStory.text || [])
         .map((p: string) => (p || "").trim())
         .filter((p: string) => p.length > 0);
-      
+
       // Generate for all paragraphs
       const indicesToGenerate = allParagraphs.map((_, i) => i);
-      console.log(`Total paragraphs: ${allParagraphs.length}, Generating images for all ${indicesToGenerate.length} paragraphs`);
+      console.log(
+        `Total paragraphs: ${allParagraphs.length}, Generating images for all ${indicesToGenerate.length} paragraphs`,
+      );
       const pages: string[] = new Array(allParagraphs.length);
       const requestIds: Array<{ requestId: string; paragraphIndex: number }> =
         [];
@@ -189,14 +194,17 @@ export const Player: React.FC = () => {
       });
 
       // Build pages array in order - use black background for missing images
-      const BLACK_BG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
+      const BLACK_BG =
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
       for (let i = 0; i < allParagraphs.length; i++) {
         pages[i] = imageMap[i] || BLACK_BG;
       }
 
       // Step 4: Save to localStorage and update story
       const storageKey = `story-images-${storyId}`;
-      console.log(`Final pages array: ${JSON.stringify(pages.map((p, i) => `[${i}]: ${p.substring(0, 50)}...`))}`);
+      console.log(
+        `Final pages array: ${JSON.stringify(pages.map((p, i) => `[${i}]: ${p.substring(0, 50)}...`))}`,
+      );
       localStorage.setItem(storageKey, JSON.stringify(pages));
 
       pendingStory.pages = pages;
@@ -259,12 +267,14 @@ export const Player: React.FC = () => {
                 : undefined
             }
             subtitles={(() => {
-              if (!currentStory.text || currentStory.text.length === 0) return [];
+              if (!currentStory.text || currentStory.text.length === 0)
+                return [];
               const totalParagraphs = currentStory.text.length;
               const partSize = Math.ceil(totalParagraphs / 3);
               return [
                 currentStory.text[0] || "",
-                currentStory.text[Math.min(partSize, totalParagraphs - 1)] || "",
+                currentStory.text[Math.min(partSize, totalParagraphs - 1)] ||
+                  "",
                 currentStory.text[totalParagraphs - 1] || "",
               ];
             })()}

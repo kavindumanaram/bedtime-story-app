@@ -9,6 +9,12 @@ type Props = {
   storyId?: string;
 };
 
+const TINTS = [
+  { name: "warm", class: "sepia-[0.15]" },
+  { name: "cool", class: "brightness-[0.95] saturate-[1.1] hue-rotate-[5deg]" },
+  { name: "dreamy", class: "blur-[0.5px] brightness-[1.05] contrast-[0.95]" },
+];
+
 export default function LargeStoryPlayer({
   pages = [],
   subtitles = [],
@@ -20,8 +26,10 @@ export default function LargeStoryPlayer({
   const [index, setIndex] = useState(initialIndex);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pageTransition, setPageTransition] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Load generated images from localStorage if storyId provided
   const getPages = () => {
@@ -57,6 +65,7 @@ export default function LargeStoryPlayer({
   );
   const img = (loadedPages.length ? loadedPages : DEFAULT_PAGES)[index % total];
   const subtitle = subtitles[index] || "";
+  const tintEffect = TINTS[index % TINTS.length];
 
   useEffect(() => {
     const onFull = () => setIsFullscreen(!!document.fullscreenElement);
@@ -100,6 +109,10 @@ export default function LargeStoryPlayer({
 
   useEffect(() => {
     if (isPlayingAudio) speakCurrent();
+    // Add page transition animation
+    setPageTransition(true);
+    const timer = setTimeout(() => setPageTransition(false), 300);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
@@ -124,15 +137,27 @@ export default function LargeStoryPlayer({
           width: isFullscreen ? "100vw" : "100%",
         }}
       >
-        <img
-          src={img}
-          alt={`page-${index + 1}`}
-          className="w-full h-full object-cover"
-          style={{ filter: "brightness(0.75)" }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
+        <div
+          className="absolute inset-0 transition-opacity duration-300"
+          style={{
+            opacity: pageTransition ? 0.6 : 1,
           }}
-        />
+        >
+          <img
+            ref={imgRef}
+            src={img}
+            alt={`page-${index + 1}`}
+            className={`w-full h-full object-cover transition-transform duration-[2s] ease-out ${tintEffect.class}`}
+            style={{
+              filter: "brightness(0.75)",
+              transform: pageTransition ? "scale(1)" : "scale(1.02)",
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
+            }}
+          />
+        </div>
 
         <div className="absolute left-0 right-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
           <div className="text-white font-extrabold text-2xl text-center leading-relaxed">

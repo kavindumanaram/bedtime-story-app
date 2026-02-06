@@ -26,7 +26,9 @@ export default function StoryGenerationSpinner({
 
   // Update progress bar based on completed images (e.g., 1/4 = 25%, 2/4 = 50%)
   useEffect(() => {
-    const percentage = Math.floor((completedImages / Math.max(1, totalImages)) * 100);
+    const percentage = Math.floor(
+      (completedImages / Math.max(1, totalImages)) * 100,
+    );
     setDisplayedProgress(percentage);
   }, [completedImages, totalImages]);
 
