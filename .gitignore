@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Generated story database (contains large base64 images)
+data/db.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
