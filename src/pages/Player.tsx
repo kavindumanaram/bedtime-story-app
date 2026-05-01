@@ -33,18 +33,13 @@ export const Player: React.FC = () => {
   ];
 
   useEffect(() => {
-    loadStory(mockStory.id).then((saved) => {
+    // Prioritise db lookup by the actual URL id so generated stories load correctly
+    loadStory(id!).then((saved) => {
       if (saved) {
-        setCurrentStory({
-          ...mockStory,
-          title: saved.title,
-          summary: saved.summary,
-          text: saved.text,
-          pages: [saved.coverImage],
-        });
+        setCurrentStory({ ...mockStory, ...saved, pages: [saved.coverImage] });
       }
     });
-  }, [mockStory.id]);
+  }, [id]);
 
   const getBadgeVariant = (status: string) => {
     switch (status) {

@@ -44,19 +44,20 @@ Six routes, root redirects to `/dashboard`:
 | Route | Page | Purpose |
 |-------|------|---------|
 | `/dashboard` | Dashboard | KPIs, charts, featured story cards |
-| `/library` | Library | Browsable story table with status badges |
-| `/player/:id` | Player | Story player + AI generation form |
+| `/library` | Library | Card grid of AI-generated stories loaded from `storyDb`; skeleton loading, empty state with create CTA, navigates to Player on click |
+| `/player/:id` | Player | Story player + AI generation form; sidebar hidden on this route for full-width layout |
 | `/billing` | Billing | Subscription plans, invoice history |
 | `/settings` | Settings | Notification, playback, appearance prefs |
 | `/profile` | Profile | Parent info, children management |
 
 ### Data Flow
 
-1. **Mock data** — `src/data/mock.ts` holds 10 sample stories and static chart arrays used across all pages except Player.
+1. **Mock data** — `src/data/mock.ts` holds 10 sample stories and static chart arrays used by Dashboard. Library and Player use real db data.
 2. **Story generation** — `src/api/openaiApi.ts` → `generateStory()` calls `POST https://api.openai.com/v1/chat/completions` (model: `gpt-4o-mini`) and returns `{ title, summary, text[] }`.
 3. **Image generation** — `src/api/openaiApi.ts` → `generateCoverImage()` calls `POST https://api.openai.com/v1/images/generations` (model: `gpt-image-1`) and returns a base64 data URL.
 4. **Persistence** — `src/api/storyDb.ts` calls `GET /api/db` (read) and `POST /api/db` (write), which are handled by a Vite middleware plugin in `vite.config.ts` that reads/writes `data/db.json`.
-5. **On player mount** — `loadStory(id)` checks `data/db.json`; if a generated story exists for that id it replaces the mock story.
+5. **Library** — calls `loadStories()` on mount to display all generated stories as a card grid.
+6. **On player mount** — `loadStory(id)` uses the URL `:id` param to check `data/db.json`; if a generated story exists it replaces the mock story.
 
 ### File-based DB (`data/db.json`)
 
@@ -80,7 +81,8 @@ The Vite `db-api` plugin in `vite.config.ts` adds two middleware routes to the d
 
 - **`LargeStoryPlayer`** — Full-screen image carousel with text overlays, TTS via Web Speech API, fullscreen toggle, and page navigation.
 - **`AudioControls`** — UI for play/pause, playback speed, and voice selection (not connected to real audio).
-- **`Sidebar`** + **`Topbar`** — Shell layout; sidebar is always `fixed`, `lg:pl-64` on the content wrapper offsets it on desktop.
+- **`Sidebar`** + **`Topbar`** — Shell layout; sidebar is always `fixed`, `lg:pl-64` on the content wrapper offsets it on desktop. Sidebar is hidden on `/player` routes to maximise space.
+- **`StoryCard`** (inline in `Library.tsx`) — Card with cover image, title, summary, child/theme/age metadata, and a "Play Story" button. Navigates to `/player/:id`.
 
 ### Testing
 
