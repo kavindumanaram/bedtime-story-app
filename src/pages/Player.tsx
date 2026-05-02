@@ -8,6 +8,7 @@ import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
 import { stories } from "../data/mock";
 import { loadStory } from "../api/storyDb";
+import { supabase } from "../lib/supabase";
 import { updateStreak } from "../api/dailyStory";
 import { updateMemoryAfterRead, saveFeedback } from "../api/storyMemory";
 import { useAuth } from "../contexts/AuthContext";
@@ -26,8 +27,11 @@ export const Player: React.FC = () => {
   const navigate = useNavigate();
   const { activeChild, profile } = useAuth();
 
-  const mockStory = stories.find((s) => s.id === id) || stories[0];
-  const [currentStory, setCurrentStory] = useState(mockStory);
+  // If the id matches a local mock story we already have the data — no network needed.
+  const knownMock = stories.find((s) => s.id === id);
+  const [currentStory, setCurrentStory] = useState(knownMock ?? stories[0]);
+  // Only show a loading skeleton for non-mock ids (Supabase UUIDs or db.json timestamp ids)
+  const [isLoading, setIsLoading] = useState(!knownMock);
   const [textPage, setTextPage] = useState(0);
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
 
@@ -39,10 +43,35 @@ export const Player: React.FC = () => {
   const ttsRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
-    loadStory(id!).then((saved) => {
+    if (!id) { setIsLoading(false); return; }
+
+    loadStory(id).then(async (saved) => {
       if (saved) {
-        setCurrentStory({ ...mockStory, ...saved, pages: saved.images ?? [saved.coverImage] });
+        setCurrentStory({ ...stories[0], ...saved, pages: saved.images ?? [saved.coverImage] });
+        setIsLoading(false);
+        return;
       }
+
+      if (knownMock) {
+        // Already showing the correct mock story — nothing more to fetch
+        setIsLoading(false);
+        return;
+      }
+
+      // Story was saved to Supabase by triggerRead / triggerContinuation
+      const { data } = await supabase.from("stories").select("*").eq("id", id).single();
+      if (data) {
+        setCurrentStory({
+          ...stories[0],
+          id: data.id,
+          title: data.title,
+          summary: data.summary ?? "",
+          text: (data.paragraphs as string[]) ?? [],
+          pages: (data.image_urls as string[] | null) ?? (data.cover_url ? [data.cover_url as string] : undefined),
+          coverUrl: (data.cover_url as string | null) ?? stories[0].coverUrl,
+        });
+      }
+      setIsLoading(false);
     });
   }, [id]);
 
@@ -109,6 +138,50 @@ export const Player: React.FC = () => {
       ? currentStory.pages
       : undefined;
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="px-4 lg:px-8 py-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Library
+          </button>
+        </div>
+        <div className="px-4 lg:px-8 pb-10 space-y-4">
+          {/* Image skeleton */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="aspect-[4/3] sm:aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
+              <Sparkles className="w-10 h-10 text-gray-300 animate-spin [animation-duration:3s]" />
+            </div>
+          </div>
+          {/* Title skeleton */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
+            <div className="h-7 bg-gray-200 animate-pulse rounded-lg w-2/3" />
+            <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-full" />
+            <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-4/5" />
+            <div className="flex gap-2 pt-1">
+              {[40, 56, 64, 48].map((w) => (
+                <div key={w} className="h-6 bg-gray-100 animate-pulse rounded-full" style={{ width: w }} />
+              ))}
+            </div>
+          </div>
+          {/* Text skeleton */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <div className="h-4 bg-gray-200 animate-pulse rounded w-24" />
+            <div className="space-y-2 min-h-[100px]">
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-full" />
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-full" />
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-3/4" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Back nav */}
@@ -144,12 +217,14 @@ export const Player: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{currentStory.title}</h1>
           <p className="text-gray-600 text-sm leading-relaxed mb-4">{currentStory.summary}</p>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={getBadgeVariant(mockStory.status)}>{mockStory.status}</Badge>
-            <Badge>{mockStory.category}</Badge>
-            <Badge>Ages {mockStory.ageRange}</Badge>
-            <Badge>{mockStory.duration}</Badge>
-          </div>
+          {knownMock && (
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={getBadgeVariant(knownMock.status)}>{knownMock.status}</Badge>
+              <Badge>{knownMock.category}</Badge>
+              <Badge>Ages {knownMock.ageRange}</Badge>
+              <Badge>{knownMock.duration}</Badge>
+            </div>
+          )}
         </div>
 
         {/* Text reader */}
@@ -223,7 +298,7 @@ export const Player: React.FC = () => {
         </div>
 
         {/* Feedback footer — shown on last page */}
-        {isLastPage && activeChild && (
+        {isLastPage && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-gray-700">How was the story?</h3>
             <div className="flex flex-wrap gap-2">
