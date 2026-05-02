@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Card } from '../components/Card';
 import { Bell, Volume2, Moon, Shield, Download } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export const Settings: React.FC = () => {
+  const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [autoplay, setAutoplay] = useState(false);
   const [nightMode, setNightMode] = useState(true);
@@ -121,18 +123,19 @@ export const Settings: React.FC = () => {
                   Theme
                 </label>
                 <div className="grid grid-cols-3 gap-3">
-                  {['Light', 'Dark', 'Auto'].map((theme) => (
+                  {(['light', 'dark', 'auto'] as const).map((t) => (
                     <button
-                      key={theme}
+                      key={t}
+                      onClick={() => setTheme(t)}
                       className={`
-                        px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                        ${theme === 'Auto' 
-                          ? 'bg-primary text-white' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize
+                        ${theme === t
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }
                       `}
                     >
-                      {theme}
+                      {t}
                     </button>
                   ))}
                 </div>

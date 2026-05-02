@@ -1,4 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Play,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  BookOpen,
+} from "lucide-react";
 
 type Props = {
   pages?: string[];
@@ -31,26 +40,17 @@ export default function LargeStoryPlayer({
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Load generated images from localStorage if storyId provided
   const getPages = () => {
-    if (pages && pages.length) {
-      return pages;
-    }
+    if (pages && pages.length) return pages;
     if (storyId) {
-      const storageKey = `story-images-${storyId}`;
-      const stored = localStorage.getItem(storageKey);
+      const stored = localStorage.getItem(`story-images-${storyId}`);
       if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {
-          // Fall through to default
-        }
+        try { return JSON.parse(stored); } catch { /* fall through */ }
       }
     }
     return [];
   };
 
-  // Friendly, child-oriented images (Pexels placeholders)
   const DEFAULT_PAGES = [
     "https://images.pexels.com/photos/3662622/pexels-photo-3662622.jpeg",
     "https://images.pexels.com/photos/3747416/pexels-photo-3747416.jpeg",
@@ -79,9 +79,7 @@ export default function LargeStoryPlayer({
       if (!document.fullscreenElement)
         await (containerRef.current as any).requestFullscreen();
       else await document.exitFullscreen();
-    } catch (_) {
-      /* ignore */
-    }
+    } catch (_) { /* ignore */ }
   };
 
   const stopSpeech = () => {
@@ -91,17 +89,12 @@ export default function LargeStoryPlayer({
   };
 
   const speakCurrent = () => {
-    if (!("speechSynthesis" in window)) {
-      alert("Speech synthesis not supported in this browser.");
-      return;
-    }
+    if (!("speechSynthesis" in window)) return;
     stopSpeech();
     const utter = new SpeechSynthesisUtterance(subtitle || "");
     utter.rate = 0.95;
     utter.lang = "en-US";
-    utter.onend = () => {
-      setIsPlayingAudio(false);
-    };
+    utter.onend = () => setIsPlayingAudio(false);
     utterRef.current = utter;
     window.speechSynthesis.speak(utter);
     setIsPlayingAudio(true);
@@ -109,7 +102,6 @@ export default function LargeStoryPlayer({
 
   useEffect(() => {
     if (isPlayingAudio) speakCurrent();
-    // Add page transition animation
     setPageTransition(true);
     const timer = setTimeout(() => setPageTransition(false), 300);
     return () => clearTimeout(timer);
@@ -123,35 +115,28 @@ export default function LargeStoryPlayer({
     };
   }, []);
 
+  const glassBtn = "w-11 h-11 rounded-full flex items-center justify-center shadow-lg bg-white/20 backdrop-blur-sm border border-white/20 text-white hover:bg-white/30 transition-all duration-200";
+  const glassNav = "absolute top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-white/20 backdrop-blur-sm border border-white/20 text-white hover:bg-white/30 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed";
+
   return (
     <div
       ref={containerRef}
-      className={`w-full rounded-lg overflow-hidden bg-black ${
-        isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""
-      }`}
+      className={`w-full rounded-lg overflow-hidden bg-black ${isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""}`}
     >
       <div
         className="relative w-full overflow-hidden"
-        style={{
-          height: isFullscreen ? "100vh" : "520px",
-          width: isFullscreen ? "100vw" : "100%",
-        }}
+        style={{ height: isFullscreen ? "100vh" : "520px", width: isFullscreen ? "100vw" : "100%" }}
       >
         <div
           className="absolute inset-0 transition-opacity duration-300"
-          style={{
-            opacity: pageTransition ? 0.6 : 1,
-          }}
+          style={{ opacity: pageTransition ? 0.6 : 1 }}
         >
           <img
             ref={imgRef}
             src={img}
             alt={`page-${index + 1}`}
             className={`w-full h-full object-cover transition-transform duration-[2s] ease-out ${tintEffect.class}`}
-            style={{
-              filter: "brightness(0.75)",
-              transform: pageTransition ? "scale(1)" : "scale(1.02)",
-            }}
+            style={{ filter: "brightness(0.75)", transform: pageTransition ? "scale(1)" : "scale(1.02)" }}
             onError={(e) => {
               (e.target as HTMLImageElement).src =
                 "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
@@ -159,71 +144,58 @@ export default function LargeStoryPlayer({
           />
         </div>
 
+        {/* Subtitle overlay */}
         <div className="absolute left-0 right-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
-          <div className="text-white font-extrabold text-2xl text-center leading-relaxed">
+          <p className="max-w-2xl mx-auto text-white font-bold text-xl text-center leading-relaxed drop-shadow-lg">
             {subtitle}
-          </div>
+          </p>
         </div>
 
+        {/* Top-right controls */}
         <div className="absolute top-3 right-3 flex gap-2">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isPlayingAudio) stopSpeech();
-              else speakCurrent();
-            }}
+            onClick={(e) => { e.stopPropagation(); isPlayingAudio ? stopSpeech() : speakCurrent(); }}
             aria-label={isPlayingAudio ? "Stop audio" : "Play audio"}
-            title={isPlayingAudio ? "Stop audio" : "Play audio"}
-            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg text-2xl font-bold ${isPlayingAudio ? "bg-red-600 text-white" : "bg-white text-red-600"}`}
+            className={glassBtn}
           >
-            {isPlayingAudio ? "⏸" : "▶"}
+            {isPlayingAudio ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
           </button>
 
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleDetails && onToggleDetails();
-            }}
-            aria-label="Toggle details"
-            title={detailsOpen ? "Hide details" : "Show details"}
-            className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg text-2xl font-bold ${detailsOpen ? "bg-blue-600 text-white" : "bg-white text-blue-600"}`}
+            onClick={(e) => { e.stopPropagation(); onToggleDetails?.(); }}
+            aria-label={detailsOpen ? "Hide details" : "Show details"}
+            className={`${glassBtn} ${detailsOpen ? "bg-white/40" : ""}`}
           >
-            ℹ️
+            <BookOpen className="w-5 h-5" />
           </button>
 
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleFullscreen();
-            }}
+            onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg text-2xl bg-white text-green-600"
+            className={glassBtn}
           >
-            ⛶
+            {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
           </button>
         </div>
 
+        {/* Left nav */}
         <button
-          onClick={() => {
-            stopSpeech();
-            setIndex((i) => Math.max(0, i - 1));
-          }}
+          onClick={() => { stopSpeech(); setIndex((i) => Math.max(0, i - 1)); }}
           disabled={index === 0}
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow"
+          className={`${glassNav} left-3`}
+          aria-label="Previous page"
         >
-          ◀
+          <ChevronLeft className="w-6 h-6" />
         </button>
 
+        {/* Right nav */}
         <button
-          onClick={() => {
-            stopSpeech();
-            setIndex((i) => Math.min(total - 1, i + 1));
-          }}
+          onClick={() => { stopSpeech(); setIndex((i) => Math.min(total - 1, i + 1)); }}
           disabled={index === total - 1}
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-lg bg-white/90 flex items-center justify-center text-xl shadow"
+          className={`${glassNav} right-3`}
+          aria-label="Next page"
         >
-          ▶
+          <ChevronRight className="w-6 h-6" />
         </button>
       </div>
 

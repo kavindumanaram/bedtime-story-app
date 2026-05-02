@@ -1,26 +1,40 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft,
-  Volume2,
-  VolumeX,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
+  ArrowLeft, Volume2, VolumeX, ChevronLeft, ChevronRight,
+  Sparkles, Heart, AlertTriangle, Clock, Rabbit, Mountain, ArrowRight, Check,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
 import { stories } from "../data/mock";
 import { loadStory } from "../api/storyDb";
+import { updateStreak } from "../api/dailyStory";
+import { updateMemoryAfterRead, saveFeedback } from "../api/storyMemory";
+import { useAuth } from "../contexts/AuthContext";
+import type { FeedbackReaction } from "../lib/supabase";
+
+const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
+  { reaction: "loved",         icon: Heart,         label: "Loved it" },
+  { reaction: "too_scary",     icon: AlertTriangle,  label: "Too scary" },
+  { reaction: "too_long",      icon: Clock,          label: "Too long" },
+  { reaction: "more_animals",  icon: Rabbit,         label: "More animals" },
+  { reaction: "more_adventure",icon: Mountain,       label: "More adventure" },
+];
 
 export const Player: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const mockStory = stories.find((s) => s.id === id) || stories[0];
+  const { activeChild, profile } = useAuth();
 
+  const mockStory = stories.find((s) => s.id === id) || stories[0];
   const [currentStory, setCurrentStory] = useState(mockStory);
   const [textPage, setTextPage] = useState(0);
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+
+  // Feedback state
+  const [selectedReaction, setSelectedReaction] = useState<FeedbackReaction | null>(null);
+  const [markedContinue, setMarkedContinue] = useState(false);
+  const [streakUpdated, setStreakUpdated] = useState(false);
 
   const ttsRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -53,6 +67,33 @@ export const Player: React.FC = () => {
   useEffect(() => { stopTTS(); }, [textPage]);
   useEffect(() => { return () => stopTTS(); }, []);
 
+  const paragraphs = currentStory.text ?? [];
+  const hasParagraphs = paragraphs.length > 0;
+  const isLastPage = hasParagraphs && textPage === paragraphs.length - 1;
+
+  // When reaching the last page, update streak (once per session)
+  useEffect(() => {
+    if (isLastPage && !streakUpdated && activeChild && profile) {
+      setStreakUpdated(true);
+      updateStreak(activeChild.id, profile.id).catch(() => {/* non-blocking */});
+    }
+  }, [isLastPage, streakUpdated, activeChild, profile]);
+
+  const handleFeedback = async (reaction: FeedbackReaction) => {
+    if (!activeChild || !profile || !id) return;
+    setSelectedReaction(reaction);
+    const theme = (currentStory as any).theme ?? "adventure";
+    await saveFeedback(id, activeChild.id, profile.id, reaction, theme).catch(() => {/* non-blocking */});
+  };
+
+  const handleContinueTomorrow = async () => {
+    if (!activeChild || !profile || !id) return;
+    setMarkedContinue(true);
+    const lastP = paragraphs[paragraphs.length - 1] ?? "";
+    const summary = (currentStory.summary as string | undefined) ?? "";
+    await updateMemoryAfterRead(activeChild.id, profile.id, id, summary, lastP).catch(() => {/* non-blocking */});
+  };
+
   const getBadgeVariant = (status: string) => {
     switch (status) {
       case "NEW": return "new" as const;
@@ -62,10 +103,6 @@ export const Player: React.FC = () => {
     }
   };
 
-  const paragraphs = currentStory.text ?? [];
-  const hasParagraphs = paragraphs.length > 0;
-
-  // Use images[] when available (future 4-image support), else pages[], else let LargeStoryPlayer use defaults
   const carouselPages = (currentStory as any).images?.length
     ? (currentStory as any).images
     : currentStory.pages?.length
@@ -74,8 +111,7 @@ export const Player: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
-      {/* ── Back nav + Create button ───────────────────────── */}
+      {/* Back nav */}
       <div className="px-4 lg:px-8 py-4 flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}
@@ -94,8 +130,7 @@ export const Player: React.FC = () => {
       </div>
 
       <div className="px-4 lg:px-8 pb-10 space-y-4">
-
-        {/* ── Carousel card ─────────────────────────────────── */}
+        {/* Carousel */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <LargeStoryPlayer
             pages={carouselPages}
@@ -105,7 +140,7 @@ export const Player: React.FC = () => {
           />
         </div>
 
-        {/* ── Title + meta card ──────────────────────────────── */}
+        {/* Title + meta */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{currentStory.title}</h1>
           <p className="text-gray-600 text-sm leading-relaxed mb-4">{currentStory.summary}</p>
@@ -117,7 +152,7 @@ export const Player: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Text reader card ───────────────────────────────── */}
+        {/* Text reader */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Story Text</h2>
@@ -128,7 +163,6 @@ export const Player: React.FC = () => {
             )}
           </div>
 
-          {/* Dot indicators */}
           {hasParagraphs && (
             <div className="flex items-center gap-2">
               {paragraphs.map((_, i) => (
@@ -146,14 +180,10 @@ export const Player: React.FC = () => {
             </div>
           )}
 
-          {/* Paragraph */}
           <p className="text-gray-700 text-base leading-relaxed min-h-[100px]">
-            {hasParagraphs
-              ? paragraphs[textPage]
-              : "Create a story to start reading here."}
+            {hasParagraphs ? paragraphs[textPage] : "Create a story to start reading here."}
           </p>
 
-          {/* Controls */}
           <div className="flex items-center justify-between pt-1 border-t border-gray-100">
             <button
               onClick={() => {
@@ -175,7 +205,7 @@ export const Player: React.FC = () => {
               <button
                 onClick={() => setTextPage((p) => Math.max(0, p - 1))}
                 disabled={!hasParagraphs || textPage === 0}
-                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 transition-colors"
                 aria-label="Previous paragraph"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -183,7 +213,7 @@ export const Player: React.FC = () => {
               <button
                 onClick={() => setTextPage((p) => Math.min(paragraphs.length - 1, p + 1))}
                 disabled={!hasParagraphs || textPage === paragraphs.length - 1}
-                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 transition-colors"
                 aria-label="Next paragraph"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -191,6 +221,45 @@ export const Player: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Feedback footer — shown on last page */}
+        {isLastPage && activeChild && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700">How was the story?</h3>
+            <div className="flex flex-wrap gap-2">
+              {FEEDBACK_OPTIONS.map(({ reaction, icon: Icon, label }) => (
+                <button
+                  key={reaction}
+                  onClick={() => handleFeedback(reaction)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
+                    selectedReaction === reaction
+                      ? "bg-primary text-white border-primary"
+                      : "bg-gray-50 text-gray-600 border-gray-200 hover:border-primary/40 hover:text-primary"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+              <button
+                onClick={handleContinueTomorrow}
+                disabled={markedContinue}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  markedContinue
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                }`}
+              >
+                {markedContinue
+                  ? <><Check className="w-4 h-4" /> We'll remember this!</>
+                  : <><ArrowRight className="w-4 h-4" /> Continue this story tomorrow</>}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

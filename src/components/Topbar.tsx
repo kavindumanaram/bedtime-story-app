@@ -7,12 +7,12 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
       <div className="flex items-center justify-between px-4 lg:px-8 py-4">
         {/* Left: Mobile menu button */}
         <button
           onClick={onMenuClick}
-          className="lg:hidden text-gray-600 hover:text-gray-900"
+          className="lg:hidden text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -24,14 +24,14 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
             <input
               type="text"
               placeholder="Search stories..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
         </div>
 
         {/* Right: User menu */}
         <div className="flex items-center gap-4 ml-4">
-          <button className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
+          <button className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
             <User className="w-5 h-5" />
             <span>Sign In</span>
           </button>

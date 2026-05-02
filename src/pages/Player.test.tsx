@@ -7,6 +7,19 @@ vi.mock("../api/storyDb", () => ({
   loadStory: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../contexts/AuthContext", () => ({
+  useAuth: () => ({ activeChild: null, profile: null }),
+}));
+
+vi.mock("../api/dailyStory", () => ({
+  updateStreak: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../api/storyMemory", () => ({
+  updateMemoryAfterRead: vi.fn().mockResolvedValue(undefined),
+  saveFeedback: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { loadStory } from "../api/storyDb";
 
 const renderPlayer = (id = "1") =>
