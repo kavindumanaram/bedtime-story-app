@@ -166,10 +166,8 @@ export async function triggerRead(
 
     if (!story) throw new Error("Failed to save template story");
 
-    await supabase
-      .from("daily_stories")
-      .update({ story_id: story.id, is_generated: true })
-      .eq("id", assignment.id);
+    // Non-blocking — daily_stories table may not exist in dev
+    supabase.from("daily_stories").update({ story_id: story.id, is_generated: true }).eq("id", assignment.id).then(() => {}).catch(() => {});
 
     return story.id;
   }
@@ -214,13 +212,11 @@ export async function triggerRead(
 
   if (!story) throw new Error("Failed to save AI story");
 
-  await Promise.all([
-    supabase
-      .from("daily_stories")
-      .update({ story_id: story.id, is_generated: true })
-      .eq("id", assignment.id),
-    incrementQuota(profile.id),
-  ]);
+  // Non-blocking — daily_stories table may not exist in dev
+  supabase.from("daily_stories").update({ story_id: story.id, is_generated: true }).eq("id", assignment.id).then(() => {}).catch(() => {});
+
+  // Quota increment is best-effort; don't let it block navigation
+  incrementQuota(profile.id).catch(() => {});
 
   return story.id;
 }

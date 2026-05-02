@@ -29,7 +29,7 @@ Vite exposes `VITE_` prefixed variables to the browser via `import.meta.env`. Al
 
 ## Architecture
 
-**HushTales** is a React + TypeScript SPA that calls OpenAI APIs and Supabase directly from the browser. There is no dedicated backend server. Story data is currently persisted in `data/db.json` via a Vite dev server middleware (dev-only); the Supabase `stories` table is the target production persistence layer.
+**HushTales** is a React + TypeScript SPA that calls OpenAI APIs and Supabase directly from the browser. There is no dedicated backend server. Story data is persisted in `data/db.json` via a Vite dev server middleware (dev-only) and in Supabase `stories` table (production target).
 
 ### Tech Stack
 
@@ -48,13 +48,13 @@ Routes `/login` and `/onboarding` are public. All others are wrapped in `AuthGua
 |-------|------|---------|
 | `/login` | Login | Sign in / create account (email+password, Google OAuth) |
 | `/onboarding` | Onboarding | GDPR consent + add first child (shown once after sign-up) |
-| `/dashboard` | Dashboard | KPIs, charts, featured story cards |
-| `/library` | Library | Card grid of AI-generated stories; navigates to Player on click |
-| `/create` | Create | Story generation form with animated spinners; redirects to Player when done |
-| `/player/:id` | Player | Full-screen story player; sidebar hidden on this route |
-| `/billing` | Billing | Subscription plans, invoice history |
+| `/dashboard` | Dashboard | KPIs, Tonight's Story card, Continue card, charts |
+| `/library` | Library | Card grid of stories; per-child filter pills; navigates to Player on click |
+| `/create` | Create | Story generation with mode selector (New / Continue / Character) |
+| `/player/:id` | Player | Full-screen story player with feedback footer; sidebar hidden |
+| `/billing` | Billing | Free / Basic / Premium plan cards, invoice history |
 | `/settings` | Settings | Notification, playback, appearance (theme) prefs |
-| `/profile` | Profile | Parent info, children management |
+| `/profile` | Profile | Parent info, full children CRUD with preferences UI |
 
 ### Auth Flow
 
@@ -67,19 +67,44 @@ Routes `/login` and `/onboarding` are public. All others are wrapped in `AuthGua
 
 `useAuth().activeChild` holds the currently selected child. On load it is restored from `localStorage` (`husht_active_child_id`), falling back to the first child in the list. `setActiveChild(child)` updates state and persists the id to `localStorage`.
 
-The **Sidebar** renders a child-switcher section (above the user footer) showing each child as a coloured avatar chip. Clicking a chip calls `setActiveChild` instantly.
+The **Sidebar** renders a child-switcher section showing each child as a coloured avatar chip. Clicking a chip calls `setActiveChild` instantly; the **Dashboard** resets all state immediately on `activeChild.id` change then re-fetches.
 
 The **Create** page uses `activeChild` automatically — no manual name/age input. The **Library** page shows per-child filter pills. The **Dashboard** shows a "Showing stats for [name]" subtitle.
+
+### Plan Tiers
+
+| Plan | Monthly AI stories | Cover images | Nightly story |
+|------|--------------------|-------------|---------------|
+| `free` | 0 | No | Template only |
+| `basic` | 30 | No | AI text |
+| `premium` | Unlimited | Yes | AI text + image |
+
+Plan is stored in `profiles.plan`. Quota counts live in `usage_quotas` (reset every 30 days). Exceeding the limit throws `PlanLimitError` which the Dashboard / Create pages catch and show an upgrade banner.
+
+### Daily Story System
+
+- `getTonightAssignment(child, parentId)` — returns or creates today's `daily_stories` row; uses a deterministic template (hash of child.id + ISO date) so the title is known before any AI call.
+- `triggerRead(assignment, child, profile)` — called when "Read Now" is tapped. Free: renders template locally. Basic/Premium: calls OpenAI → saves to `stories` → returns `story_id`. Same-day cache hit returns existing story.
+- Template title is computed **locally** in Dashboard from `pickTonightTemplateWithMemory` before Supabase responds, so it appears instantly.
+- Dashboard gracefully falls back to a virtual local assignment if `daily_stories` table doesn't exist.
+
+### Memory & Continuation System
+
+- `child_story_memory` — one row per child: last story title / summary / ending, favorite/disliked themes. Written by `updateMemoryAfterRead`.
+- `recurring_characters` — named characters per child, ranked by `times_appeared`. Written by `upsertCharacter`.
+- `story_feedback` — one reaction per (story, child). Positive reactions push to `favorite_themes`; `too_scary` pushes to `disliked_themes`.
+- `triggerContinuation(child, profile)` — builds continuation prompt from memory context (~90 extra tokens), saves new story with optional `series_id + episode_num`.
+- All memory/series writes are **best-effort** (non-blocking) so failures never block story navigation.
 
 ### Data Flow
 
 1. **Mock data** — `src/data/mock.ts` holds sample stories and static chart arrays used by Dashboard.
-2. **Story generation** — `src/api/openaiApi.ts` → `generateStory()` calls OpenAI chat completions (model: `gpt-4o-mini`) → returns `{ title, summary, text[] }`.
-3. **Image generation** — `src/api/openaiApi.ts` → `generateCoverImage()` calls OpenAI images (model: `gpt-image-1`) → returns base64 data URL.
+2. **Story generation** — `src/api/openaiApi.ts` → `generateStory()` calls OpenAI chat completions (model: `gpt-4o-mini`) → returns `{ title, summary, text[] }`. Accepts optional `continuation` context for episode continuity.
+3. **Image generation** — `src/api/openaiApi.ts` → `generateCoverImage()` calls OpenAI images (model: `gpt-image-1`) → returns base64 data URL. Premium plan only.
 4. **Persistence (dev)** — `src/api/storyDb.ts` calls `GET /api/db` / `POST /api/db`, handled by a Vite middleware plugin in `vite.config.ts` that reads/writes `data/db.json`.
-5. **Persistence (prod target)** — `stories` table in Supabase (see schema below). Migration from file-based db not yet done.
-6. **Create page** — idle → writing (text gen) → painting (image gen) → done (auto-redirect to `/player/:id` after 1800 ms). Uses `useAuth().activeChild` automatically; no manual name/age input.
-7. **Player** — `loadStory(id)` checks `data/db.json`; renders `LargeStoryPlayer` carousel + text reader. No generation form (moved to `/create`).
+5. **Persistence (prod target)** — `stories` table in Supabase. Daily story system and memory use their own Supabase tables (see migrations).
+6. **Create page** — Three modes: New Story (theme input), Continue Previous (reads memory), Favourite Character (chip → pre-fills theme). All modes: idle → writing → painting → done → navigate to Player.
+7. **Player** — `loadStory(id)` checks `data/db.json`; renders `LargeStoryPlayer` carousel + text reader. Streak updated on last page. Feedback footer shown on last page.
 
 ### File-based DB (`data/db.json`)
 
@@ -91,12 +116,16 @@ The Vite `db-api` plugin in `vite.config.ts` adds two middleware routes:
 
 ### Supabase Database Schema
 
-All migrations live in `supabase/migrations/`. Run them in filename order against your Supabase project — either paste into the SQL Editor or use `supabase db push` if the Supabase CLI is configured.
+All migrations live in `supabase/migrations/`. Run them **in filename order** against your Supabase project — paste into the SQL Editor or use `supabase db push`.
+
+> **Important:** The daily story system, memory/continuation, and streak features require migrations `20260502_daily_story_system.sql` and `20260502_story_memory_system.sql` to be applied. Without them, the app degrades gracefully (template title still shows, story generation still works) but `daily_stories` tracking, streak counts, and "Continue Previous" will not persist.
 
 | File | Description |
 |------|-------------|
-| `20240101_initial_schema.sql` | Creates all tables (`profiles`, `children`, `stories`, `play_sessions`), RLS policies, and the `handle_new_user` trigger |
-| `20260502_add_child_preferences.sql` | Adds `preferences` JSONB column to `children` (interests, tone, length) |
+| `20240101_initial_schema.sql` | Creates `profiles`, `children`, `stories`, `play_sessions`, RLS policies, `handle_new_user` trigger |
+| `20260502_add_child_preferences.sql` | Adds `preferences` JSONB to `children` (interests, tone, length) |
+| `20260502_daily_story_system.sql` | `plan` column on `profiles`; `daily_stories`, `usage_quotas`, `child_streaks` tables; RLS; quota trigger |
+| `20260502_story_memory_system.sql` | `story_series`, `child_story_memory`, `recurring_characters`, `story_feedback` tables; series columns on `stories`; RLS |
 
 > **Note:** The `handle_new_user` trigger automatically creates a `profiles` row when a user signs up, preventing the `gdpr_consent_at` upsert from failing silently in Onboarding.
 
@@ -105,30 +134,36 @@ All migrations live in `supabase/migrations/`. Run them in filename order agains
 | File | Purpose |
 |------|---------|
 | `src/config.ts` | OpenAI API key, model names, image size — single source of truth |
-| `src/lib/supabase.ts` | Supabase client singleton + TypeScript types (`Profile`, `Child`, `ChildPreferences`, `DbStory`, `PlaySession`) |
+| `src/lib/supabase.ts` | Supabase client singleton + all TypeScript types (`Profile`, `Child`, `ChildPreferences`, `DbStory`, `DailyStory`, `ChildStreak`, `StorySeries`, `ChildStoryMemory`, `FeedbackReaction`, …) |
+| `src/lib/templateEngine.ts` | `renderTemplate`, `pickTonightTemplate`, `pickTonightTemplateWithMemory`, `pickContinuationTemplate` |
+| `src/data/storyTemplates.ts` | 40 static story templates (8 categories × 5 stories); used for Free plan and local title preview |
 | `src/contexts/AuthContext.tsx` | `AuthProvider` + `useAuth()` — session, profile, children, activeChild, setActiveChild |
 | `src/contexts/ThemeContext.tsx` | `ThemeProvider` + `useTheme()` — light/dark/auto, persists to localStorage |
-| `src/api/openaiApi.ts` | `generateStory(name, age, theme, options?)` + `generateCoverImage()` — direct OpenAI fetch calls |
+| `src/api/openaiApi.ts` | `generateStory(name, age, theme, options?)` (supports `continuation` context) + `generateCoverImage()` |
 | `src/api/storyDb.ts` | `saveStory()` / `loadStories()` / `loadStory(id)` — CRUD over `/api/db` (dev) |
+| `src/api/dailyStory.ts` | `getTonightAssignment`, `triggerRead`, `updateStreak`, `PlanLimitError` |
+| `src/api/storyMemory.ts` | `getMemoryContext`, `updateMemoryAfterRead`, `saveFeedback`, `upsertCharacter`, `getChildStreak`, `getTopCharacters` |
+| `src/api/storyContinuation.ts` | `triggerContinuation` — AI or template continuation with series tracking |
 | `src/pages/Login.tsx` | Sign in / create account with email+password and Google OAuth |
 | `src/pages/Onboarding.tsx` | Two-step: GDPR consent → add first child |
-| `src/pages/Create.tsx` | Story generation; uses `activeChild` automatically; theme is the only user input |
+| `src/pages/Create.tsx` | Story generation; mode selector (New / Continue Previous / Favourite Character); uses `activeChild` automatically |
 | `src/pages/Profile.tsx` | Parent info + full children CRUD (add/edit/delete) with preferences UI |
-| `src/pages/Player.tsx` | Full-screen story player (light theme, no generate form) |
+| `src/pages/Player.tsx` | Full-screen story player; streak updated on last page; feedback footer on last page |
+| `src/pages/Dashboard.tsx` | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge |
 | `vite.config.ts` | Vite config + inline `db-api` middleware plugin for file-based persistence |
 
 ### Key Components
 
-- **`LargeStoryPlayer`** — Full-screen image carousel with text overlays, TTS via Web Speech API, fullscreen toggle, and page navigation. Accepts `images?: string[]` for future 4-image-per-story support.
-- **`AudioControls`** — UI for play/pause, playback speed, voice selection.
+- **`LargeStoryPlayer`** — Full-screen image carousel with text overlays, TTS via Web Speech API, fullscreen toggle, and page navigation.
 - **`Sidebar`** — Child switcher (coloured avatar chips) + nav links + parent sign-out. Hidden on `/player` routes. Has `dark:` variants.
 - **`Topbar`** — Search bar + user avatar. Has `dark:` variants.
 - **`Card`** — White card wrapper; has `dark:bg-gray-800` variant.
+- **`Badge`** — Pill badges with `new`, `popular`, `downloaded`, `default` variants.
 - **`StoryCard`** (inline in `Library.tsx`) — Card with cover image, title, summary, child/theme/age metadata.
 
 ### Dark Mode
 
-Tailwind is configured with `darkMode: 'class'`. `ThemeProvider` toggles the `dark` class on `<html>`. Currently `dark:` variants are applied to structural shell components (Sidebar, Topbar, Card, main bg). Page-level content (Dashboard, Library, etc.) still needs `dark:` variants added.
+Tailwind is configured with `darkMode: 'class'`. `ThemeProvider` toggles the `dark` class on `<html>`. Currently `dark:` variants are applied to structural shell components (Sidebar, Topbar, Card, main bg). Page-level content still needs `dark:` variants added.
 
 ### Testing
 
@@ -136,7 +171,7 @@ Tests live alongside source files (`*.test.ts` / `*.test.tsx`):
 
 - `src/api/openaiApi.test.ts` — mocks `fetch`, tests URL, headers, response parsing, error handling
 - `src/api/storyDb.test.ts` — mocks `fetch`, tests all CRUD operations against `/api/db`
-- `src/pages/Player.test.tsx` — component tests using `@testing-library/react`, mocks `openaiApi` and `storyDb` modules
+- `src/pages/Player.test.tsx` — component tests using `@testing-library/react`, mocks `openaiApi`, `storyDb`, `AuthContext`, `dailyStory`, and `storyMemory` modules
 
 ### Deployment
 

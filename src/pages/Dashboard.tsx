@@ -14,7 +14,7 @@ import { getTonightAssignment, triggerRead, PlanLimitError } from "../api/dailyS
 import { getMemoryContext, getChildStreak, getTopCharacters } from "../api/storyMemory";
 import { triggerContinuation } from "../api/storyContinuation";
 import { storyTemplates } from "../data/storyTemplates";
-import { renderTemplate } from "../lib/templateEngine";
+import { renderTemplate, pickTonightTemplateWithMemory } from "../lib/templateEngine";
 import type { DailyStory, ChildStreak } from "../lib/supabase";
 
 type CardState = "idle" | "loading" | "error";
@@ -34,34 +34,77 @@ export const Dashboard: React.FC = () => {
   const [limitError, setLimitError] = useState<string | null>(null);
   const [quota, setQuota] = useState<{ count: number; limit: number } | null>(null);
 
+  // Reset stale data the instant a different child is selected
+  useEffect(() => {
+    setAssignment(null);
+    setTonightTitle("");
+    setTonightTheme("");
+    setStreak(null);
+    setMemory(null);
+    setCharacters([]);
+    setLimitError(null);
+    setReadState("idle");
+    setContinueState("idle");
+    setQuota(null);
+  }, [activeChild?.id]);
+
   const loadDashboard = useCallback(async () => {
     if (!activeChild || !profile) return;
 
-    const [mem, streakData, chars] = await Promise.all([
+    // 1. Show title immediately from local template engine — zero Supabase required
+    const localTemplate = pickTonightTemplateWithMemory(activeChild, new Date(), []);
+    const localRendered = renderTemplate(localTemplate, { childName: activeChild.name, age: activeChild.age });
+    setTonightTitle(localRendered.title);
+    setTonightTheme(localTemplate.theme);
+
+    // 2. Fetch memory / streak / characters — each fails independently
+    const [memResult, streakResult, charsResult] = await Promise.allSettled([
       getMemoryContext(activeChild.id),
       getChildStreak(activeChild.id),
       getTopCharacters(activeChild.id, 2),
     ]);
+    const mem = memResult.status === "fulfilled" ? memResult.value : null;
+    const streakData = streakResult.status === "fulfilled" ? streakResult.value : null;
+    const chars = charsResult.status === "fulfilled" ? charsResult.value : [];
     setMemory(mem);
     setStreak(streakData);
     setCharacters(chars);
 
-    // Load tonight's assignment (reads template title instantly, no AI)
-    const disliked = mem ? [] : []; // disliked themes loaded from memory if needed
-    const a = await getTonightAssignment(activeChild, profile.id, disliked);
-    setAssignment(a);
+    // 3. Create tonight's daily_stories row — graceful fallback if table doesn't exist
+    let resolvedTemplate = localTemplate;
+    try {
+      const disliked = (mem as any)?.dislikedThemes ?? [];
+      const a = await getTonightAssignment(activeChild, profile.id, disliked);
+      setAssignment(a);
+      const t = storyTemplates.find((s) => s.id === a.template_id);
+      if (t) {
+        resolvedTemplate = t;
+        const r = renderTemplate(t, { childName: activeChild.name, age: activeChild.age });
+        setTonightTitle(r.title);
+        setTonightTheme(t.theme);
+      }
+    } catch {
+      // daily_stories table not yet set up — use a virtual local assignment so Read Now still works
+      setAssignment({
+        id: "local",
+        child_id: activeChild.id,
+        parent_id: profile.id,
+        story_date: new Date().toISOString().slice(0, 10),
+        template_id: resolvedTemplate.id,
+        story_id: null,
+        is_generated: false,
+        created_at: new Date().toISOString(),
+      } as DailyStory);
+    }
 
-    const template = storyTemplates.find((t) => t.id === a.template_id) ?? storyTemplates[0];
-    const rendered = renderTemplate(template, { childName: activeChild.name, age: activeChild.age });
-    setTonightTitle(rendered.title);
-    setTonightTheme(template.theme);
-
-    // Load quota for Basic plan
+    // 4. Quota display for Basic plan
     if (profile.plan === "basic") {
-      const { data } = await import("../lib/supabase").then(({ supabase }) =>
-        supabase.from("usage_quotas").select("monthly_ai_count, monthly_ai_limit").eq("user_id", profile.id).single()
-      );
-      if (data) setQuota({ count: data.monthly_ai_count, limit: data.monthly_ai_limit });
+      try {
+        const { data } = await import("../lib/supabase").then(({ supabase }) =>
+          supabase.from("usage_quotas").select("monthly_ai_count, monthly_ai_limit").eq("user_id", profile.id).single()
+        );
+        if (data) setQuota({ count: data.monthly_ai_count, limit: data.monthly_ai_limit });
+      } catch { /* table may not exist yet */ }
     }
   }, [activeChild, profile]);
 

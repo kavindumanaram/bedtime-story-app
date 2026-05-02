@@ -94,18 +94,15 @@ export async function triggerContinuation(
     const nextTemplate = pickContinuationTemplate(child, prevTemplate?.category ?? "adventure", prevTemplateId);
     const rendered = renderTemplate(nextTemplate, { childName: child.name, age: child.age });
 
-    const { data: lastStoryRow } = await supabase
-      .from("stories")
-      .select("series_id, episode_num")
-      .eq("id", memory.lastTemplateId ?? "")
-      .maybeSingle();
-
-    const { seriesId, episodeNum } = await resolveOrCreateSeries(
-      child.id, profile.id,
-      // Use child's last_story_id from memory
-      await getLastStoryId(child.id),
-      `${child.name}'s Story Adventures`,
-    );
+    // Series tracking is best-effort — story_series table may not exist yet
+    let seriesId: string | null = null;
+    let episodeNum = 1;
+    try {
+      const lastStoryId = await getLastStoryId(child.id);
+      const series = await resolveOrCreateSeries(child.id, profile.id, lastStoryId, `${child.name}'s Story Adventures`);
+      seriesId = series.seriesId;
+      episodeNum = series.episodeNum;
+    } catch { /* continue without series tracking */ }
 
     const { data: story } = await supabase
       .from("stories")
@@ -118,18 +115,17 @@ export async function triggerContinuation(
         theme: nextTemplate.theme,
         is_template: true,
         template_id: nextTemplate.id,
-        series_id: seriesId,
-        episode_num: episodeNum,
+        ...(seriesId ? { series_id: seriesId, episode_num: episodeNum } : {}),
       })
       .select()
       .single();
 
     if (!story) throw new Error("Failed to save continuation story");
 
-    await updateMemoryAfterRead(
+    updateMemoryAfterRead(
       child.id, profile.id, story.id,
       rendered.summary, rendered.paragraphs[rendered.paragraphs.length - 1],
-    );
+    ).catch(() => {});
     return story.id;
   }
 
@@ -142,11 +138,15 @@ export async function triggerContinuation(
     );
   }
 
-  const lastStoryId = await getLastStoryId(child.id);
-  const { seriesId, episodeNum } = await resolveOrCreateSeries(
-    child.id, profile.id, lastStoryId,
-    `${child.name}'s Story Adventures`,
-  );
+  // Series tracking is best-effort
+  let seriesId: string | null = null;
+  let episodeNum = 1;
+  try {
+    const lastStoryId = await getLastStoryId(child.id);
+    const series = await resolveOrCreateSeries(child.id, profile.id, lastStoryId, `${child.name}'s Story Adventures`);
+    seriesId = series.seriesId;
+    episodeNum = series.episodeNum;
+  } catch { /* continue without series tracking */ }
 
   const storyContent = await generateStory(child.name, child.age, "", {
     tone, length,
@@ -177,21 +177,19 @@ export async function triggerContinuation(
       cover_url: coverUrl,
       image_urls: coverUrl ? [coverUrl] : null,
       is_template: false,
-      series_id: seriesId,
-      episode_num: episodeNum,
+      ...(seriesId ? { series_id: seriesId, episode_num: episodeNum } : {}),
     })
     .select()
     .single();
 
   if (!story) throw new Error("Failed to save continuation story");
 
-  await Promise.all([
-    updateMemoryAfterRead(
-      child.id, profile.id, story.id,
-      storyContent.summary, storyContent.text[storyContent.text.length - 1] ?? "",
-    ),
-    incrementQuota(profile.id),
-  ]);
+  // Both are best-effort; don't block navigation
+  updateMemoryAfterRead(
+    child.id, profile.id, story.id,
+    storyContent.summary, storyContent.text[storyContent.text.length - 1] ?? "",
+  ).catch(() => {});
+  incrementQuota(profile.id).catch(() => {});
 
   return story.id;
 }
