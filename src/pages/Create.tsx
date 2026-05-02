@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Sparkles,
   Moon,
@@ -9,9 +9,11 @@ import {
   CheckCircle2,
   Play,
   Palette,
+  AlertCircle,
 } from "lucide-react";
 import { generateStory, generateCoverImage } from "../api/openaiApi";
 import { saveStory, type GeneratedStory } from "../api/storyDb";
+import { useAuth } from "../contexts/AuthContext";
 
 type CreateState = "idle" | "writing" | "painting" | "done";
 
@@ -131,16 +133,14 @@ function DoneCard({
 
 export const Create: React.FC = () => {
   const navigate = useNavigate();
+  const { activeChild } = useAuth();
 
   const [createState, setCreateState] = useState<CreateState>("idle");
-  const [childName, setChildName] = useState("Dimuth");
-  const [childAge, setChildAge] = useState(6);
   const [theme, setTheme] = useState("friendly dragon");
   const [error, setError] = useState<string | null>(null);
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [createdStory, setCreatedStory] = useState<GeneratedStory | null>(null);
 
-  // Auto-redirect after done
   useEffect(() => {
     if (createState === "done" && createdStory) {
       const timer = setTimeout(() => navigate(`/player/${createdStory.id}`), 1800);
@@ -149,13 +149,22 @@ export const Create: React.FC = () => {
   }, [createState, createdStory, navigate]);
 
   const handleGenerate = async () => {
+    if (!activeChild) return;
     setError(null);
     setCoverImage(null);
     setCreatedStory(null);
 
     try {
       setCreateState("writing");
-      const story = await generateStory(childName, childAge, theme);
+      const story = await generateStory(
+        activeChild.name,
+        activeChild.age,
+        theme,
+        {
+          tone: activeChild.preferences?.tone,
+          length: activeChild.preferences?.length,
+        },
+      );
 
       setCreateState("painting");
       const image = await generateCoverImage(story.title, story.summary);
@@ -168,8 +177,8 @@ export const Create: React.FC = () => {
         text: story.text,
         coverImage: image,
         images: [image],
-        childName,
-        age: childAge,
+        childName: activeChild.name,
+        age: activeChild.age,
         theme,
         createdAt: new Date().toISOString(),
       };
@@ -181,6 +190,10 @@ export const Create: React.FC = () => {
       setCreateState("idle");
     }
   };
+
+  const interestChips = activeChild?.preferences?.interests ?? [];
+  const toneLabel = activeChild?.preferences?.tone ?? "calm";
+  const lengthLabel = activeChild?.preferences?.length ?? "medium";
 
   return (
     <div className="space-y-6">
@@ -200,46 +213,69 @@ export const Create: React.FC = () => {
                 <Sparkles className="w-5 h-5 text-primary" />
                 New Bedtime Story
               </h2>
-              <p className="text-sm text-gray-500">Personalise the story for your child</p>
             </div>
 
-            {/* Form inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Child's Name</span>
-                <input
-                  value={childName}
-                  onChange={(e) => setChildName(e.target.value)}
-                  placeholder="e.g. Dimuth"
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Age</span>
-                <input
-                  type="number"
-                  value={childAge}
-                  onChange={(e) => setChildAge(Number(e.target.value))}
-                  min={1}
-                  max={12}
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Theme</span>
-                <input
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
-                  placeholder="e.g. friendly dragon"
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                />
-              </label>
-            </div>
+            {/* Active child banner */}
+            {activeChild ? (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100">
+                <span
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ backgroundColor: activeChild.avatar_color }}
+                >
+                  {activeChild.name[0].toUpperCase()}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {activeChild.name}, age {activeChild.age}
+                  </p>
+                  <p className="text-xs text-gray-400 capitalize">
+                    {toneLabel} · {lengthLabel}
+                  </p>
+                </div>
+                <Link
+                  to="/profile"
+                  className="text-xs text-primary hover:text-primary-dark font-medium transition-colors flex-shrink-0"
+                >
+                  Switch →
+                </Link>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-100 text-amber-700">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm">
+                  Select a child in the sidebar or{" "}
+                  <Link to="/profile" className="font-medium underline">
+                    add a child profile
+                  </Link>{" "}
+                  to continue.
+                </p>
+              </div>
+            )}
 
-            {/* Quick prompt chips */}
+            {/* Theme input */}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Theme</span>
+              <input
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                placeholder="e.g. friendly dragon"
+                className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+              />
+            </label>
+
+            {/* Quick prompt chips — interests first, then defaults */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Quick themes</p>
               <div className="flex flex-wrap gap-2">
+                {interestChips.map((interest) => (
+                  <button
+                    key={interest}
+                    onClick={() => setTheme(interest)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/20 bg-primary/5 text-primary text-sm transition-colors hover:bg-primary/10"
+                  >
+                    {interest}
+                  </button>
+                ))}
                 {quickPrompts.map((chip) => {
                   const Icon = chip.icon;
                   return (
@@ -265,7 +301,8 @@ export const Create: React.FC = () => {
             {/* Generate button */}
             <button
               onClick={handleGenerate}
-              className="w-full py-3.5 rounded-xl bg-primary hover:bg-primary-dark text-white font-semibold text-base transition-colors shadow-sm flex items-center justify-center gap-2"
+              disabled={!activeChild}
+              className="w-full py-3.5 rounded-xl bg-primary hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-base transition-colors shadow-sm flex items-center justify-center gap-2"
             >
               <Sparkles className="w-5 h-5" />
               Generate Story

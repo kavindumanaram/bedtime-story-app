@@ -6,11 +6,18 @@ export type StoryContent = {
   text: string[];
 };
 
+const LENGTH_PARAGRAPHS: Record<string, number> = { short: 3, medium: 4, long: 6 };
+
 export async function generateStory(
   childName: string,
   age: number,
   theme: string,
+  options?: { tone?: string; length?: "short" | "medium" | "long" },
 ): Promise<StoryContent> {
+  const tone = options?.tone ?? "calm";
+  const length = options?.length ?? "medium";
+  const paragraphCount = LENGTH_PARAGRAPHS[length] ?? 4;
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -28,7 +35,7 @@ export async function generateStory(
         },
         {
           role: "user",
-          content: `Write a short bedtime story for ${childName}, age ${age}, about "${theme}". Return JSON with: title (string), summary (one sentence string), text (array of exactly 4 short paragraphs).`,
+          content: `Write a ${length} bedtime story with a ${tone} tone for ${childName}, age ${age}, about "${theme}". Return JSON with: title (string), summary (one sentence string), text (array of exactly ${paragraphCount} short paragraphs).`,
         },
       ],
     }),

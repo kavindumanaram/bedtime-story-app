@@ -5,10 +5,28 @@ import { BarChartCard } from '../components/BarChartCard';
 import { LineChartCard } from '../components/LineChartCard';
 import { BookOpen, Clock, Flame, Plus, ArrowRight } from 'lucide-react';
 import { listeningSessionsData, sleepScoreData } from '../data/mock';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Dashboard: React.FC = () => {
+  const { activeChild } = useAuth();
+
   return (
     <div className="space-y-6">
+      {/* Page header with active-child context */}
+      {activeChild && (
+        <div className="flex items-center gap-2">
+          <span
+            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+            style={{ backgroundColor: activeChild.avatar_color }}
+          >
+            {activeChild.name[0].toUpperCase()}
+          </span>
+          <p className="text-sm text-gray-500">
+            Showing stats for <span className="font-semibold text-gray-700">{activeChild.name}</span>
+          </p>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         <StatCard

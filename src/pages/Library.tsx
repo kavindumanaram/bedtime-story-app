@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Play, User, Palette, Clock, BookOpen, Sparkles, Plus } from "lucide-react";
 import { loadStories, type GeneratedStory } from "../api/storyDb";
+import { useAuth } from "../contexts/AuthContext";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -103,8 +104,10 @@ function StoryCard({ story }: { story: GeneratedStory }) {
 
 export const Library: React.FC = () => {
   const navigate = useNavigate();
+  const { children } = useAuth();
   const [stories, setStories] = useState<GeneratedStory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [childFilter, setChildFilter] = useState<string | null>(null);
 
   useEffect(() => {
     loadStories().then((s) => {
@@ -112,6 +115,10 @@ export const Library: React.FC = () => {
       setLoading(false);
     });
   }, []);
+
+  const filtered = childFilter
+    ? stories.filter((s) => s.childName === childFilter)
+    : stories;
 
   return (
     <div className="space-y-6">
@@ -125,7 +132,7 @@ export const Library: React.FC = () => {
           {!loading && stories.length > 0 && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-full">
               <BookOpen className="w-4 h-4" />
-              {stories.length} {stories.length === 1 ? "story" : "stories"}
+              {filtered.length} {filtered.length === 1 ? "story" : "stories"}
             </span>
           )}
           <button
@@ -138,6 +145,40 @@ export const Library: React.FC = () => {
         </div>
       </div>
 
+      {/* Child filter pills */}
+      {children.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setChildFilter(null)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              childFilter === null
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            All
+          </button>
+          {children.map((child) => (
+            <button
+              key={child.id}
+              onClick={() => setChildFilter(childFilter === child.name ? null : child.name)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                childFilter === child.name ? 'text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              style={childFilter === child.name ? { backgroundColor: child.avatar_color } : undefined}
+            >
+              <span
+                className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: childFilter === child.name ? 'rgba(255,255,255,0.3)' : child.avatar_color }}
+              >
+                {child.name[0].toUpperCase()}
+              </span>
+              {child.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Loading skeletons */}
       {loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -146,29 +187,33 @@ export const Library: React.FC = () => {
       )}
 
       {/* Empty state */}
-      {!loading && stories.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mb-4">
             <Sparkles className="w-9 h-9 text-purple-400" />
           </div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">No stories yet</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">
+            {childFilter ? `No stories for ${childFilter} yet` : "No stories yet"}
+          </h2>
           <p className="text-gray-500 text-sm max-w-xs mb-6">
-            Head to the Player and generate your first AI bedtime story.
+            {childFilter
+              ? `Generate a story for ${childFilter} on the Create page.`
+              : "Head to Create and generate your first AI bedtime story."}
           </p>
           <button
-            onClick={() => navigate("/player/1")}
+            onClick={() => navigate("/create")}
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
           >
             <Sparkles className="w-4 h-4" />
-            Generate your first story
+            {childFilter ? `Create story for ${childFilter}` : "Generate your first story"}
           </button>
         </div>
       )}
 
       {/* Story grid */}
-      {!loading && stories.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {stories.map((story) => (
+          {filtered.map((story) => (
             <StoryCard key={story.id} story={story} />
           ))}
         </div>
