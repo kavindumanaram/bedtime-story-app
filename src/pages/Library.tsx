@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Play, User, Palette, Clock, BookOpen, Sparkles } from "lucide-react";
+import { Play, User, Palette, Clock, BookOpen, Sparkles, Plus } from "lucide-react";
 import { loadStories, type GeneratedStory } from "../api/storyDb";
 
 function timeAgo(iso: string): string {
@@ -121,12 +121,21 @@ export const Library: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Story Library</h1>
           <p className="text-gray-500 text-sm">Your collection of AI-generated bedtime adventures</p>
         </div>
-        {!loading && stories.length > 0 && (
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-full">
-            <BookOpen className="w-4 h-4" />
-            {stories.length} {stories.length === 1 ? "story" : "stories"}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {!loading && stories.length > 0 && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-full">
+              <BookOpen className="w-4 h-4" />
+              {stories.length} {stories.length === 1 ? "story" : "stories"}
+            </span>
+          )}
+          <button
+            onClick={() => navigate("/create")}
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-dark text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Create Story
+          </button>
+        </div>
       </div>
 
       {/* Loading skeletons */}

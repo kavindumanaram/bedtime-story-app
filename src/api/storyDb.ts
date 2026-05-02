@@ -4,6 +4,7 @@ export type GeneratedStory = {
   summary: string;
   text: string[];
   coverImage: string;
+  images?: string[];   // future: 4 AI-generated images; currently [coverImage]
   childName: string;
   age: number;
   theme: string;

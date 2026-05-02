@@ -1,11 +1,11 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Library, 
-  Play, 
-  CreditCard, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Library,
+  Sparkles,
+  CreditCard,
+  Settings,
   User,
   X
 } from 'lucide-react';
@@ -18,7 +18,7 @@ interface SidebarProps {
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/library', label: 'Story Library', icon: Library },
-  { path: '/player/1', label: 'Player', icon: Play },
+  { path: '/create', label: 'Create Story', icon: Sparkles },
   { path: '/billing', label: 'Billing', icon: CreditCard },
   { path: '/settings', label: 'Settings', icon: Settings },
   { path: '/profile', label: 'Profile', icon: User }
@@ -64,8 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path || 
-                             (item.path.includes('player') && location.pathname.includes('player'));
+              const isActive = location.pathname === item.path;
 
               return (
                 <Link

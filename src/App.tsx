@@ -14,6 +14,7 @@ import { Player } from "./pages/Player";
 import { Billing } from "./pages/Billing";
 import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/Profile";
+import { Create } from "./pages/Create";
 
 function AppWrapper() {
   const location = useLocation();
@@ -30,7 +31,7 @@ function AppWrapper() {
       <div className={isPlayerRoute ? "" : "lg:pl-64"}>
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="px-4 lg:px-8 py-8">
+        <main className={isPlayerRoute ? "" : "px-4 lg:px-8 py-8"}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -39,6 +40,7 @@ function AppWrapper() {
             <Route path="/billing" element={<Billing />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/create" element={<Create />} />
           </Routes>
         </main>
       </div>

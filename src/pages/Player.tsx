@@ -1,232 +1,197 @@
-import React, { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
-import { Card } from "../components/Card";
+import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  Volume2,
+  VolumeX,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
 import { stories } from "../data/mock";
-import { generateStory, generateCoverImage } from "../api/openaiApi";
-import { saveStory, loadStory, type GeneratedStory } from "../api/storyDb";
-import { Moon, Sparkles, Wand2, MapPin } from "lucide-react";
-
-type LoadingStep = "story" | "image" | null;
+import { loadStory } from "../api/storyDb";
 
 export const Player: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const mockStory = stories.find((s) => s.id === id) || stories[0];
 
   const [currentStory, setCurrentStory] = useState(mockStory);
-  const [nightMode, setNightMode] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState<LoadingStep>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [textPage, setTextPage] = useState(0);
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
 
-  const [childName, setChildName] = useState("Dimuth");
-  const [childAge, setChildAge] = useState(6);
-  const [theme, setTheme] = useState("friendly dragon");
-
-  const prompts = [
-    { text: "Make it calmer", icon: Moon },
-    { text: "Shorten the story", icon: Sparkles },
-    { text: "Add a dragon", icon: Wand2 },
-    { text: "More Sri Lankan setting", icon: MapPin },
-  ];
+  const ttsRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
-    // Prioritise db lookup by the actual URL id so generated stories load correctly
     loadStory(id!).then((saved) => {
       if (saved) {
-        setCurrentStory({ ...mockStory, ...saved, pages: [saved.coverImage] });
+        setCurrentStory({ ...mockStory, ...saved, pages: saved.images ?? [saved.coverImage] });
       }
     });
   }, [id]);
 
+  const stopTTS = () => {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    ttsRef.current = null;
+    setIsTTSPlaying(false);
+  };
+
+  const speakParagraph = (text: string) => {
+    if (!("speechSynthesis" in window)) return;
+    stopTTS();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.95;
+    utter.lang = "en-US";
+    utter.onend = () => setIsTTSPlaying(false);
+    ttsRef.current = utter;
+    window.speechSynthesis.speak(utter);
+    setIsTTSPlaying(true);
+  };
+
+  useEffect(() => { stopTTS(); }, [textPage]);
+  useEffect(() => { return () => stopTTS(); }, []);
+
   const getBadgeVariant = (status: string) => {
     switch (status) {
-      case "NEW": return "new";
-      case "POPULAR": return "popular";
-      case "DOWNLOADED": return "downloaded";
-      default: return "default";
+      case "NEW": return "new" as const;
+      case "POPULAR": return "popular" as const;
+      case "DOWNLOADED": return "downloaded" as const;
+      default: return "default" as const;
     }
   };
 
-  const handleGenerate = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setLoadingStep("story");
-      const storyContent = await generateStory(childName, childAge, theme);
+  const paragraphs = currentStory.text ?? [];
+  const hasParagraphs = paragraphs.length > 0;
 
-      setLoadingStep("image");
-      const coverImage = await generateCoverImage(storyContent.title, storyContent.summary);
-
-      const generated: GeneratedStory = {
-        id: mockStory.id,
-        title: storyContent.title,
-        summary: storyContent.summary,
-        text: storyContent.text,
-        coverImage,
-        childName,
-        age: childAge,
-        theme,
-        createdAt: new Date().toISOString(),
-      };
-
-      await saveStory(generated);
-      setCurrentStory({ ...mockStory, ...generated, pages: [coverImage] });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      setLoading(false);
-      setLoadingStep(null);
-    }
-  };
-
-  const stepLabel =
-    loadingStep === "story"
-      ? "Writing your story..."
-      : loadingStep === "image"
-        ? "Drawing the cover..."
-        : null;
+  // Use images[] when available (future 4-image support), else pages[], else let LargeStoryPlayer use defaults
+  const carouselPages = (currentStory as any).images?.length
+    ? (currentStory as any).images
+    : currentStory.pages?.length
+      ? currentStory.pages
+      : undefined;
 
   return (
-    <div className={`space-y-6 ${nightMode ? "bg-gray-900" : ""}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className={`text-2xl font-bold mb-2 ${nightMode ? "text-white" : "text-gray-900"}`}>
-            Story Player
-          </h1>
-          <p className={nightMode ? "text-gray-400" : "text-gray-600"}>
-            Immerse yourself in tonight's bedtime adventure
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+
+      {/* ── Back nav + Create button ───────────────────────── */}
+      <div className="px-4 lg:px-8 py-4 flex items-center justify-between">
         <button
-          onClick={() => setNightMode(!nightMode)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            nightMode
-              ? "bg-gray-800 text-white hover:bg-gray-700"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
         >
-          <Moon className="w-4 h-4 inline mr-2" />
-          {nightMode ? "Day Mode" : "Night Mode"}
+          <ArrowLeft className="w-4 h-4" />
+          Back to Library
+        </button>
+        <button
+          onClick={() => navigate("/create")}
+          className="flex items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium transition-colors"
+        >
+          <Sparkles className="w-4 h-4" />
+          Create New Story
         </button>
       </div>
 
-      <div className={`grid grid-cols-1 ${showDetails ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-6`}>
-        <Card className={`p-6 ${nightMode ? "bg-gray-800" : ""}`}>
+      <div className="px-4 lg:px-8 pb-10 space-y-4">
+
+        {/* ── Carousel card ─────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <LargeStoryPlayer
-            pages={currentStory.pages?.length ? currentStory.pages : undefined}
-            subtitles={(() => {
-              if (!currentStory.text?.length) return [];
-              const n = currentStory.text.length;
-              const mid = Math.ceil(n / 3);
-              return [
-                currentStory.text[0] || "",
-                currentStory.text[Math.min(mid, n - 1)] || "",
-                currentStory.text[n - 1] || "",
-              ];
-            })()}
-            initialIndex={0}
-            onToggleDetails={() => setShowDetails((s) => !s)}
-            detailsOpen={showDetails}
+            pages={carouselPages}
+            subtitles={paragraphs}
+            initialIndex={textPage}
             storyId={currentStory.id}
           />
+        </div>
 
-          <div className="mt-6 space-y-4">
-            <div>
-              <h2 className={`text-2xl font-bold mb-2 ${nightMode ? "text-white" : "text-gray-900"}`}>
-                {currentStory.title}
-              </h2>
-              <p className={`text-sm ${nightMode ? "text-gray-400" : "text-gray-600"}`}>
-                {currentStory.summary}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={getBadgeVariant(mockStory.status)}>{mockStory.status}</Badge>
-              <Badge>{mockStory.category}</Badge>
-              <Badge>Ages {mockStory.ageRange}</Badge>
-              <Badge>{mockStory.duration}</Badge>
-            </div>
+        {/* ── Title + meta card ──────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{currentStory.title}</h1>
+          <p className="text-gray-600 text-sm leading-relaxed mb-4">{currentStory.summary}</p>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant={getBadgeVariant(mockStory.status)}>{mockStory.status}</Badge>
+            <Badge>{mockStory.category}</Badge>
+            <Badge>Ages {mockStory.ageRange}</Badge>
+            <Badge>{mockStory.duration}</Badge>
           </div>
-        </Card>
+        </div>
 
-        {showDetails && (
-          <Card className={`p-6 ${nightMode ? "bg-gray-800" : ""}`}>
-            <h3 className={`text-lg font-semibold mb-4 ${nightMode ? "text-white" : "text-gray-900"}`}>
-              Story Text
-            </h3>
-            <div className={`space-y-4 max-h-80 overflow-y-auto pr-2 ${nightMode ? "text-gray-300" : "text-gray-700"}`}>
-              {(currentStory.text || []).map((paragraph, index) => (
-                <p key={index} className="leading-relaxed">{paragraph}</p>
+        {/* ── Text reader card ───────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Story Text</h2>
+            {hasParagraphs && (
+              <span className="text-xs text-gray-400">
+                Page {textPage + 1} of {paragraphs.length}
+              </span>
+            )}
+          </div>
+
+          {/* Dot indicators */}
+          {hasParagraphs && (
+            <div className="flex items-center gap-2">
+              {paragraphs.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setTextPage(i)}
+                  aria-label={`Go to page ${i + 1}`}
+                  className={`rounded-full transition-all duration-200 ${
+                    i === textPage
+                      ? "w-6 h-2 bg-primary"
+                      : "w-2 h-2 bg-gray-200 hover:bg-gray-400"
+                  }`}
+                />
               ))}
             </div>
-          </Card>
-        )}
-      </div>
+          )}
 
-      {/* Generate Story */}
-      <Card className={`p-6 ${nightMode ? "bg-gray-800" : ""}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${nightMode ? "text-white" : "text-gray-900"}`}>
-          Generate a Story
-        </h3>
+          {/* Paragraph */}
+          <p className="text-gray-700 text-base leading-relaxed min-h-[100px]">
+            {hasParagraphs
+              ? paragraphs[textPage]
+              : "Create a story to start reading here."}
+          </p>
 
-        <div className="mb-4 flex flex-wrap gap-2 items-center">
-          <input
-            className="px-3 py-2 rounded border text-gray-900"
-            value={childName}
-            onChange={(e) => setChildName(e.target.value)}
-            placeholder="Child's name"
-            disabled={loading}
-          />
-          <input
-            type="number"
-            className="px-3 py-2 rounded border w-24 text-gray-900"
-            value={childAge}
-            onChange={(e) => setChildAge(Number(e.target.value))}
-            disabled={loading}
-          />
-          <input
-            className="px-3 py-2 rounded border flex-1 text-gray-900"
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            placeholder="Theme (e.g. friendly dragon)"
-            disabled={loading}
-          />
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className={`px-4 py-2 rounded-lg font-medium min-w-[140px] ${
-              loading ? "bg-blue-400 text-white cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
-          >
-            {stepLabel ?? "Generate Story"}
-          </button>
-        </div>
+          {/* Controls */}
+          <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+            <button
+              onClick={() => {
+                if (isTTSPlaying) stopTTS();
+                else if (hasParagraphs) speakParagraph(paragraphs[textPage]);
+              }}
+              disabled={!hasParagraphs}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                isTTSPlaying
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+              }`}
+            >
+              {isTTSPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              {isTTSPlaying ? "Stop" : "Read Aloud"}
+            </button>
 
-        {error && (
-          <p className="text-sm text-red-500 mb-3">{error}</p>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          {prompts.map((prompt, index) => {
-            const Icon = prompt.icon;
-            return (
+            <div className="flex gap-2">
               <button
-                key={index}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
-                  nightMode
-                    ? "bg-gray-700 text-gray-200 hover:bg-gray-600"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
+                onClick={() => setTextPage((p) => Math.max(0, p - 1))}
+                disabled={!hasParagraphs || textPage === 0}
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                aria-label="Previous paragraph"
               >
-                <Icon className="w-4 h-4" />
-                {prompt.text}
+                <ChevronLeft className="w-5 h-5" />
               </button>
-            );
-          })}
+              <button
+                onClick={() => setTextPage((p) => Math.min(paragraphs.length - 1, p + 1))}
+                disabled={!hasParagraphs || textPage === paragraphs.length - 1}
+                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                aria-label="Next paragraph"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 };
