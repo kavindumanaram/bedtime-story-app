@@ -1,102 +1,139 @@
-import React, { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
-import { Card } from './Card';
+import React from "react";
+import { Play, Pause, Loader2 } from "lucide-react";
+
+export type VoiceProfile = {
+  id: string;
+  label: string;
+  keywords: string[];
+};
+
+export const VOICE_PROFILES: VoiceProfile[] = [
+  { id: "gentle-grandma",     label: "Gentle Grandma",     keywords: ["zira", "female", "samantha", "karen", "moira", "tessa", "fiona", "victoria"] },
+  { id: "warm-mother",        label: "Warm Mother",         keywords: ["female", "zira", "samantha", "karen", "moira"] },
+  { id: "calm-father",        label: "Calm Father",         keywords: ["david", "mark", "daniel", "alex", "james", "male"] },
+  { id: "soft-narrator",      label: "Soft Narrator",       keywords: [] },
+  { id: "sleepy-storyteller", label: "Sleepy Storyteller",  keywords: [] },
+];
+
+const SPEEDS = [
+  { value: 0.8, label: "Slow" },
+  { value: 1.0, label: "Normal" },
+  { value: 1.2, label: "Fast" },
+  { value: 1.5, label: "Faster" },
+];
 
 interface AudioControlsProps {
   duration: string;
+  isPlaying: boolean;
+  isLoading?: boolean;
+  hasVoices: boolean;
+  onPlay: () => void;
+  onPause: () => void;
+  onSpeedChange: (speed: number) => void;
+  onVoiceChange: (voiceId: string) => void;
+  progress: number;
+  currentSpeed: number;
+  currentVoice: string;
 }
 
-export const AudioControls: React.FC<AudioControlsProps> = ({ duration }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(30);
-  const [speed, setSpeed] = useState(1);
-  const [voice, setVoice] = useState('warm-mum');
-
-  const voices = [
-    { id: 'warm-mum', label: 'Warm Mum Voice' },
-    { id: 'calm-dad', label: 'Calm Dad Voice' },
-    { id: 'soft-storyteller', label: 'Soft Storyteller' },
-    { id: 'gentle-grandma', label: 'Gentle Grandma' }
-  ];
-
-  const speeds = [0.8, 1, 1.2, 1.5];
+export const AudioControls: React.FC<AudioControlsProps> = ({
+  duration,
+  isPlaying,
+  isLoading = false,
+  hasVoices,
+  onPlay,
+  onPause,
+  onSpeedChange,
+  onVoiceChange,
+  progress,
+  currentSpeed,
+  currentVoice,
+}) => {
+  const isBusy = isLoading || isPlaying;
 
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Audio Player</h3>
-      
-      {/* Progress bar */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-sm text-gray-500">{Math.floor(progress / 60)}:{String(progress % 60).padStart(2, '0')}</span>
-          <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden cursor-pointer">
-            <div 
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${(progress / 180) * 100}%` }}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+      {/* Play row: button + progress */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={isBusy ? onPause : onPlay}
+          aria-label={isPlaying ? "Pause narration" : "Play narration"}
+          className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-md flex-shrink-0 transition-all duration-200 bg-primary hover:bg-primary-dark ${
+            isBusy ? "scale-105 shadow-lg" : ""
+          }`}
+        >
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="w-5 h-5" />
+          ) : (
+            <Play className="w-5 h-5 ml-0.5" />
+          )}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+            <span className="truncate">
+              {isLoading ? "Starting…" : isPlaying ? "Reading aloud…" : "Tap to listen"}
+            </span>
+            <span className="flex-shrink-0 ml-2">{duration}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                isBusy ? "bg-primary" : "bg-gray-300"
+              }`}
+              style={{ width: `${isPlaying ? progress : 0}%` }}
             />
           </div>
-          <span className="text-sm text-gray-500">{duration}</span>
         </div>
       </div>
 
-      {/* Playback controls */}
-      <div className="flex items-center justify-center gap-4 mb-6">
-        <button className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors">
-          <SkipBack className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="w-14 h-14 flex items-center justify-center bg-primary hover:bg-primary-dark text-white rounded-full transition-colors"
-        >
-          {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
-        </button>
-        <button className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors">
-          <SkipForward className="w-5 h-5" />
-        </button>
+      {/* Speed selector */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Speed</p>
+        <div className="flex gap-2">
+          {SPEEDS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => onSpeedChange(value)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
+                currentSpeed === value
+                  ? "bg-primary text-white shadow-sm"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-95"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Speed and Voice controls */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Speed
-          </label>
-          <div className="flex gap-2">
-            {speeds.map((s) => (
+      {/* Voice / narrator selector */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Narrator</p>
+        {hasVoices ? (
+          <div className="flex flex-wrap gap-1.5">
+            {VOICE_PROFILES.map((v) => (
               <button
-                key={s}
-                onClick={() => setSpeed(s)}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                  ${speed === s 
-                    ? 'bg-primary text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }
-                `}
+                key={v.id}
+                onClick={() => onVoiceChange(v.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all duration-150 ${
+                  currentVoice === v.id
+                    ? "bg-primary/10 text-primary ring-1 ring-primary/30"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-95"
+                }`}
               >
-                {s}x
+                {v.label}
               </button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Voice
-          </label>
-          <select
-            value={voice}
-            onChange={(e) => setVoice(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          >
-            {voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic">
+            Voice narration isn't available in this browser. Try Chrome or Safari.
+          </p>
+        )}
       </div>
-    </Card>
+    </div>
   );
 };

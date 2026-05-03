@@ -8,7 +8,6 @@ import {
   MapPin,
   CheckCircle2,
   Play,
-  Palette,
   AlertCircle,
   ArrowRight,
   Star,
@@ -21,6 +20,7 @@ import { getMemoryContext, getTopCharacters } from "../api/storyMemory";
 import { PlanLimitError } from "../api/dailyStory";
 import { useAuth } from "../contexts/AuthContext";
 import type { MemoryContext } from "../api/storyMemory";
+import { GenerationProgress } from "../components/GenerationProgress";
 
 type CreateState = "idle" | "writing" | "painting" | "done";
 type StoryMode = "new" | "continue" | "character";
@@ -38,74 +38,6 @@ const quickPrompts = [
   { label: "Sri Lankan setting", icon: MapPin, theme: "set in Sri Lanka" },
 ];
 
-function WritingSpinner() {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 gap-8">
-      <div className="relative flex items-center justify-center w-28 h-28">
-        <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-        <div className="absolute inset-3 rounded-full bg-primary/10 animate-ping [animation-delay:150ms]" />
-        <div className="relative z-10 w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
-          <Sparkles className="w-8 h-8 text-primary animate-spin [animation-duration:3s]" />
-        </div>
-      </div>
-      <div className="text-center space-y-3">
-        <p className="text-lg font-semibold text-gray-800">Writing your story...</p>
-        <div className="flex items-center justify-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:0ms]" />
-          <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:150ms]" />
-          <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:300ms]" />
-        </div>
-      </div>
-      <StepProgress step={1} />
-    </div>
-  );
-}
-
-function PaintingSpinner({ coverImage }: { coverImage: string | null }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-10 gap-8 w-full">
-      <div className="flex items-center gap-3">
-        <Palette className="w-5 h-5 text-primary" />
-        <p className="text-lg font-semibold text-gray-800">Painting your illustrations...</p>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-lg">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
-            {i === 0 && coverImage ? (
-              <img
-                src={coverImage}
-                alt="Generated illustration"
-                className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
-              />
-            ) : (
-              <div className="w-full h-full animate-pulse bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200" />
-            )}
-            {i === 0 && !coverImage && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-primary animate-spin [animation-duration:2s]" />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <StepProgress step={2} />
-    </div>
-  );
-}
-
-function StepProgress({ step }: { step: 1 | 2 }) {
-  return (
-    <div className="w-full max-w-xs space-y-2">
-      <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary transition-all duration-700"
-          style={{ width: step === 1 ? "40%" : "90%" }}
-        />
-      </div>
-      <p className="text-xs text-gray-400 text-center">Step {step} of 2</p>
-    </div>
-  );
-}
 
 function DoneCard({ title, onPlay }: { title: string; onPlay: () => void }) {
   return (
@@ -457,9 +389,9 @@ export const Create: React.FC = () => {
           </div>
         )}
 
-        {createState === "writing" && <WritingSpinner />}
-
-        {createState === "painting" && <PaintingSpinner coverImage={coverImage} />}
+        {(createState === "writing" || createState === "painting") && (
+          <GenerationProgress phase={createState} coverImage={coverImage} />
+        )}
 
         {createState === "done" && (
           <DoneCard

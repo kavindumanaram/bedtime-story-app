@@ -172,3 +172,61 @@ export async function getTopCharacters(childId: string, limit = 2) {
     .limit(limit);
   return data ?? [];
 }
+
+// ── Dashboard statistics ──────────────────────────────────────
+
+export type DashboardStats = {
+  totalStoriesRead: number;
+  minutesListenedThisWeek: number;
+  storiesThisMonth: number;
+  topTheme: string | null;
+  weekOverWeekStoriesDelta: number;
+};
+
+export async function getDashboardStats(childId: string, _parentId: string): Promise<DashboardStats> {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const [totalResult, thisWeekResult, lastWeekResult, thisMonthResult, feedbackResult] =
+    await Promise.allSettled([
+      supabase.from("stories").select("id").eq("child_id", childId),
+      supabase.from("stories").select("id").eq("child_id", childId).gte("created_at", weekAgo),
+      supabase.from("stories").select("id").eq("child_id", childId).gte("created_at", twoWeeksAgo).lt("created_at", weekAgo),
+      supabase.from("stories").select("id").eq("child_id", childId).gte("created_at", monthStart),
+      supabase.from("story_feedback").select("story_id").eq("child_id", childId).eq("reaction", "loved"),
+    ]);
+
+  const total = totalResult.status === "fulfilled" ? (totalResult.value.data?.length ?? 0) : 0;
+  const thisWeek = thisWeekResult.status === "fulfilled" ? (thisWeekResult.value.data?.length ?? 0) : 0;
+  const lastWeek = lastWeekResult.status === "fulfilled" ? (lastWeekResult.value.data?.length ?? 0) : 0;
+  const thisMonth = thisMonthResult.status === "fulfilled" ? (thisMonthResult.value.data?.length ?? 0) : 0;
+  const lovedFeedback = feedbackResult.status === "fulfilled" ? (feedbackResult.value.data ?? []) : [];
+
+  let topTheme: string | null = null;
+  if (lovedFeedback.length > 0) {
+    const storyIds = lovedFeedback.map((f) => f.story_id);
+    const { data: lovedStories } = await supabase
+      .from("stories")
+      .select("theme")
+      .in("id", storyIds);
+
+    if (lovedStories && lovedStories.length > 0) {
+      const themeCounts: Record<string, number> = {};
+      for (const s of lovedStories) {
+        if (s.theme) themeCounts[s.theme] = (themeCounts[s.theme] ?? 0) + 1;
+      }
+      const sorted = Object.entries(themeCounts).sort(([, a], [, b]) => b - a);
+      topTheme = sorted[0]?.[0] ?? null;
+    }
+  }
+
+  return {
+    totalStoriesRead: total,
+    minutesListenedThisWeek: thisWeek * 5,
+    storiesThisMonth: thisMonth,
+    topTheme,
+    weekOverWeekStoriesDelta: thisWeek - lastWeek,
+  };
+}

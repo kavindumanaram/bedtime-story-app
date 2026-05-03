@@ -11,7 +11,8 @@ import {
 import { listeningSessionsData, sleepScoreData } from "../data/mock";
 import { useAuth } from "../contexts/AuthContext";
 import { getTonightAssignment, triggerRead, PlanLimitError } from "../api/dailyStory";
-import { getMemoryContext, getChildStreak, getTopCharacters } from "../api/storyMemory";
+import { getMemoryContext, getChildStreak, getTopCharacters, getDashboardStats } from "../api/storyMemory";
+import type { DashboardStats } from "../api/storyMemory";
 import { triggerContinuation } from "../api/storyContinuation";
 import { storyTemplates } from "../data/storyTemplates";
 import { renderTemplate, pickTonightTemplateWithMemory } from "../lib/templateEngine";
@@ -33,6 +34,7 @@ export const Dashboard: React.FC = () => {
   const [continueState, setContinueState] = useState<CardState>("idle");
   const [limitError, setLimitError] = useState<string | null>(null);
   const [quota, setQuota] = useState<{ count: number; limit: number } | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
 
   // Reset stale data the instant a different child is selected
   useEffect(() => {
@@ -46,6 +48,7 @@ export const Dashboard: React.FC = () => {
     setReadState("idle");
     setContinueState("idle");
     setQuota(null);
+    setDashboardStats(null);
   }, [activeChild?.id]);
 
   const loadDashboard = useCallback(async () => {
@@ -57,7 +60,7 @@ export const Dashboard: React.FC = () => {
     setTonightTitle(localRendered.title);
     setTonightTheme(localTemplate.theme);
 
-    // 2. Fetch memory / streak / characters — each fails independently
+    // 2. Fetch memory / streak / characters / stats — each fails independently
     const [memResult, streakResult, charsResult] = await Promise.allSettled([
       getMemoryContext(activeChild.id),
       getChildStreak(activeChild.id),
@@ -69,6 +72,7 @@ export const Dashboard: React.FC = () => {
     setMemory(mem);
     setStreak(streakData);
     setCharacters(chars);
+    getDashboardStats(activeChild.id, profile.id).then(setDashboardStats).catch(() => {/* non-blocking */});
 
     // 3. Create tonight's daily_stories row — graceful fallback if table doesn't exist
     let resolvedTemplate = localTemplate;
@@ -176,14 +180,24 @@ export const Dashboard: React.FC = () => {
           icon={Flame}
           trend={streak?.current_streak ? "Days in a row 🔥" : "Start tonight!"}
         />
-        <StatCard title="Minutes Listened" value="47" icon={Clock} trend="This week" />
+        <StatCard
+          title="Minutes Listened"
+          value={dashboardStats ? String(dashboardStats.minutesListenedThisWeek) : "—"}
+          icon={Clock}
+          trend="This week"
+        />
         <StatCard
           title="Stories Read"
-          value={streak ? String(streak.longest_streak) : "0"}
+          value={dashboardStats ? String(dashboardStats.totalStoriesRead) : "—"}
           icon={BookOpen}
-          trend="Longest streak"
+          trend="All time"
         />
-        <StatCard title="New Stories" value="3" icon={Sparkles} trend="This month" />
+        <StatCard
+          title="New Stories"
+          value={dashboardStats ? String(dashboardStats.storiesThisMonth) : "—"}
+          icon={Sparkles}
+          trend="This month"
+        />
       </div>
 
       {/* Limit error banner */}
@@ -306,6 +320,36 @@ export const Dashboard: React.FC = () => {
           </Card>
         )}
       </div>
+
+      {/* Insights card */}
+      {activeChild && (dashboardStats?.topTheme || (dashboardStats?.weekOverWeekStoriesDelta ?? 0) > 0 || (streak?.current_streak ?? 0) >= 3) && (
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            This week's insights
+          </h3>
+          <div className="space-y-2">
+            {dashboardStats?.topTheme && (
+              <p className="text-sm text-gray-600">
+                ✨ <span className="font-medium">{activeChild.name}</span> loves{" "}
+                <span className="font-medium text-primary capitalize">{dashboardStats.topTheme}</span> stories
+              </p>
+            )}
+            {(dashboardStats?.weekOverWeekStoriesDelta ?? 0) > 0 && (
+              <p className="text-sm text-gray-600">
+                📈 Read{" "}
+                <span className="font-medium">{dashboardStats!.weekOverWeekStoriesDelta} more</span>{" "}
+                stories than last week
+              </p>
+            )}
+            {(streak?.current_streak ?? 0) >= 3 && (
+              <p className="text-sm text-gray-600">
+                🔥 <span className="font-medium">{streak!.current_streak} nights</span> in a row — keep it up!
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

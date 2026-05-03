@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Volume2, VolumeX, ChevronLeft, ChevronRight,
+  ArrowLeft,
   Sparkles, Heart, AlertTriangle, Clock, Rabbit, Mountain, ArrowRight, Check,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
+import { AudioControls, VOICE_PROFILES } from "../components/AudioControls";
 import { stories } from "../data/mock";
 import { loadStory } from "../api/storyDb";
 import { supabase } from "../lib/supabase";
@@ -15,11 +16,11 @@ import { useAuth } from "../contexts/AuthContext";
 import type { FeedbackReaction } from "../lib/supabase";
 
 const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
-  { reaction: "loved",         icon: Heart,         label: "Loved it" },
-  { reaction: "too_scary",     icon: AlertTriangle,  label: "Too scary" },
-  { reaction: "too_long",      icon: Clock,          label: "Too long" },
-  { reaction: "more_animals",  icon: Rabbit,         label: "More animals" },
-  { reaction: "more_adventure",icon: Mountain,       label: "More adventure" },
+  { reaction: "loved",          icon: Heart,          label: "Loved it" },
+  { reaction: "too_scary",      icon: AlertTriangle,  label: "Too scary" },
+  { reaction: "too_long",       icon: Clock,          label: "Too long" },
+  { reaction: "more_animals",   icon: Rabbit,         label: "More animals" },
+  { reaction: "more_adventure", icon: Mountain,       label: "More adventure" },
 ];
 
 export const Player: React.FC = () => {
@@ -27,20 +28,30 @@ export const Player: React.FC = () => {
   const navigate = useNavigate();
   const { activeChild, profile } = useAuth();
 
-  // If the id matches a local mock story we already have the data — no network needed.
   const knownMock = stories.find((s) => s.id === id);
   const [currentStory, setCurrentStory] = useState(knownMock ?? stories[0]);
-  // Only show a loading skeleton for non-mock ids (Supabase UUIDs or db.json timestamp ids)
   const [isLoading, setIsLoading] = useState(!knownMock);
   const [textPage, setTextPage] = useState(0);
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+  const [isTTSLoading, setIsTTSLoading] = useState(false);
+  const [isDimmed, setIsDimmed] = useState(false);
 
   // Feedback state
   const [selectedReaction, setSelectedReaction] = useState<FeedbackReaction | null>(null);
   const [markedContinue, setMarkedContinue] = useState(false);
   const [streakUpdated, setStreakUpdated] = useState(false);
 
+  // TTS controls
+  const [ttsSpeed, setTtsSpeed] = useState(0.95);
+  const [ttsVoice, setTtsVoice] = useState(VOICE_PROFILES[0].id);
+  const [ttsProgress, setTtsProgress] = useState(0);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+
   const ttsRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const ttsSpeedRef = useRef(0.95);
+  const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const ttsStartTimeRef = useRef<number | null>(null);
+  const ttsEstDurationRef = useRef(0);
 
   useEffect(() => {
     if (!id) { setIsLoading(false); return; }
@@ -51,14 +62,8 @@ export const Player: React.FC = () => {
         setIsLoading(false);
         return;
       }
+      if (knownMock) { setIsLoading(false); return; }
 
-      if (knownMock) {
-        // Already showing the correct mock story — nothing more to fetch
-        setIsLoading(false);
-        return;
-      }
-
-      // Story was saved to Supabase by triggerRead / triggerContinuation
       const { data } = await supabase.from("stories").select("*").eq("id", id).single();
       if (data) {
         setCurrentStory({
@@ -75,23 +80,57 @@ export const Player: React.FC = () => {
     });
   }, [id]);
 
+  // Load TTS voices — async in Chrome, synchronous in Safari
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis?.getVoices().filter((v) => v.lang.startsWith("en")) ?? [];
+      setAvailableVoices(voices);
+    };
+    loadVoices();
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+      return () => { window.speechSynthesis.onvoiceschanged = null; };
+    }
+  }, []);
+
   const stopTTS = () => {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     ttsRef.current = null;
+    ttsStartTimeRef.current = null;
     setIsTTSPlaying(false);
+    setIsTTSLoading(false);
+    setTtsProgress(0);
   };
 
   const speakParagraph = (text: string) => {
     if (!("speechSynthesis" in window)) return;
     stopTTS();
     const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 0.95;
+    utter.rate = ttsSpeedRef.current;
     utter.lang = "en-US";
-    utter.onend = () => setIsTTSPlaying(false);
+    if (ttsVoiceRef.current) utter.voice = ttsVoiceRef.current;
+    // onstart clears the loading spinner once the browser actually begins speaking
+    utter.onstart = () => setIsTTSLoading(false);
+    utter.onend = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
+    utter.onerror = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
     ttsRef.current = utter;
+    ttsStartTimeRef.current = Date.now();
+    ttsEstDurationRef.current = (text.length / ttsSpeedRef.current) * 65;
     window.speechSynthesis.speak(utter);
     setIsTTSPlaying(true);
+    setIsTTSLoading(true);
   };
+
+  // Progress bar ticker
+  useEffect(() => {
+    if (!isTTSPlaying) { setTtsProgress(0); return; }
+    const interval = setInterval(() => {
+      if (!ttsStartTimeRef.current || !ttsEstDurationRef.current) return;
+      const elapsed = Date.now() - ttsStartTimeRef.current;
+      setTtsProgress(Math.min((elapsed / ttsEstDurationRef.current) * 100, 99));
+    }, 300);
+    return () => clearInterval(interval);
+  }, [isTTSPlaying]);
 
   useEffect(() => { stopTTS(); }, [textPage]);
   useEffect(() => { return () => stopTTS(); }, []);
@@ -100,7 +139,6 @@ export const Player: React.FC = () => {
   const hasParagraphs = paragraphs.length > 0;
   const isLastPage = hasParagraphs && textPage === paragraphs.length - 1;
 
-  // When reaching the last page, update streak (once per session)
   useEffect(() => {
     if (isLastPage && !streakUpdated && activeChild && profile) {
       setStreakUpdated(true);
@@ -123,6 +161,23 @@ export const Player: React.FC = () => {
     await updateMemoryAfterRead(activeChild.id, profile.id, id, summary, lastP).catch(() => {/* non-blocking */});
   };
 
+  const handleSpeedChange = (speed: number) => {
+    ttsSpeedRef.current = speed;
+    setTtsSpeed(speed);
+  };
+
+  // Smart voice matching: keyword search first, index fallback, then first available
+  const handleVoiceChange = (voiceId: string) => {
+    setTtsVoice(voiceId);
+    if (availableVoices.length === 0) { ttsVoiceRef.current = null; return; }
+    const voiceProfile = VOICE_PROFILES.find((p) => p.id === voiceId);
+    const matched = availableVoices.find((v) =>
+      voiceProfile?.keywords.some((k) => v.name.toLowerCase().includes(k))
+    );
+    const idx = Math.max(0, VOICE_PROFILES.findIndex((p) => p.id === voiceId));
+    ttsVoiceRef.current = matched ?? availableVoices[idx % availableVoices.length] ?? availableVoices[0] ?? null;
+  };
+
   const getBadgeVariant = (status: string) => {
     switch (status) {
       case "NEW": return "new" as const;
@@ -138,6 +193,11 @@ export const Player: React.FC = () => {
       ? currentStory.pages
       : undefined;
 
+  const ttsDurationSecs = hasParagraphs
+    ? Math.max(1, Math.round(paragraphs[textPage].length * 0.065 / ttsSpeed))
+    : 0;
+  const ttsDuration = `${Math.floor(ttsDurationSecs / 60)}:${String(ttsDurationSecs % 60).padStart(2, "0")}`;
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -151,24 +211,16 @@ export const Player: React.FC = () => {
           </button>
         </div>
         <div className="px-4 lg:px-8 pb-10 space-y-4">
-          {/* Image skeleton */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="aspect-[4/3] sm:aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
               <Sparkles className="w-10 h-10 text-gray-300 animate-spin [animation-duration:3s]" />
             </div>
           </div>
-          {/* Title skeleton */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
             <div className="h-7 bg-gray-200 animate-pulse rounded-lg w-2/3" />
             <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-full" />
             <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-4/5" />
-            <div className="flex gap-2 pt-1">
-              {[40, 56, 64, 48].map((w) => (
-                <div key={w} className="h-6 bg-gray-100 animate-pulse rounded-full" style={{ width: w }} />
-              ))}
-            </div>
           </div>
-          {/* Text skeleton */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <div className="h-4 bg-gray-200 animate-pulse rounded w-24" />
             <div className="space-y-2 min-h-[100px]">
@@ -183,9 +235,13 @@ export const Player: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Back nav */}
-      <div className="px-4 lg:px-8 py-4 flex items-center justify-between">
+    <div className={`min-h-screen transition-colors duration-700 ${isDimmed ? "bg-gray-950" : "bg-gray-50"}`}>
+      {/* Back nav — fades out in Story Mode */}
+      <div
+        className={`px-4 lg:px-8 py-4 flex items-center justify-between transition-opacity duration-500 ${
+          isDimmed ? "opacity-0 pointer-events-none" : ""
+        }`}
+      >
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
@@ -203,15 +259,35 @@ export const Player: React.FC = () => {
       </div>
 
       <div className="px-4 lg:px-8 pb-10 space-y-4">
-        {/* Carousel */}
+        {/* Carousel — single source of truth for current page via onPageChange */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <LargeStoryPlayer
             pages={carouselPages}
             subtitles={paragraphs}
             initialIndex={textPage}
+            onPageChange={setTextPage}
             storyId={currentStory.id}
+            isDimmed={isDimmed}
+            onToggleDim={() => setIsDimmed((d) => !d)}
           />
         </div>
+
+        {/* Audio controls — directly below carousel, no separate text reader card */}
+        {hasParagraphs && (
+          <AudioControls
+            isPlaying={isTTSPlaying}
+            isLoading={isTTSLoading}
+            hasVoices={availableVoices.length > 0}
+            onPlay={() => speakParagraph(paragraphs[textPage])}
+            onPause={stopTTS}
+            onSpeedChange={handleSpeedChange}
+            onVoiceChange={handleVoiceChange}
+            progress={ttsProgress}
+            currentSpeed={ttsSpeed}
+            currentVoice={ttsVoice}
+            duration={ttsDuration}
+          />
+        )}
 
         {/* Title + meta */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -227,77 +303,7 @@ export const Player: React.FC = () => {
           )}
         </div>
 
-        {/* Text reader */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Story Text</h2>
-            {hasParagraphs && (
-              <span className="text-xs text-gray-400">
-                Page {textPage + 1} of {paragraphs.length}
-              </span>
-            )}
-          </div>
-
-          {hasParagraphs && (
-            <div className="flex items-center gap-2">
-              {paragraphs.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setTextPage(i)}
-                  aria-label={`Go to page ${i + 1}`}
-                  className={`rounded-full transition-all duration-200 ${
-                    i === textPage
-                      ? "w-6 h-2 bg-primary"
-                      : "w-2 h-2 bg-gray-200 hover:bg-gray-400"
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-
-          <p className="text-gray-700 text-base leading-relaxed min-h-[100px]">
-            {hasParagraphs ? paragraphs[textPage] : "Create a story to start reading here."}
-          </p>
-
-          <div className="flex items-center justify-between pt-1 border-t border-gray-100">
-            <button
-              onClick={() => {
-                if (isTTSPlaying) stopTTS();
-                else if (hasParagraphs) speakParagraph(paragraphs[textPage]);
-              }}
-              disabled={!hasParagraphs}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                isTTSPlaying
-                  ? "bg-primary/10 text-primary border border-primary/20"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"
-              }`}
-            >
-              {isTTSPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              {isTTSPlaying ? "Stop" : "Read Aloud"}
-            </button>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setTextPage((p) => Math.max(0, p - 1))}
-                disabled={!hasParagraphs || textPage === 0}
-                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 transition-colors"
-                aria-label="Previous paragraph"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setTextPage((p) => Math.min(paragraphs.length - 1, p + 1))}
-                disabled={!hasParagraphs || textPage === paragraphs.length - 1}
-                className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-30 transition-colors"
-                aria-label="Next paragraph"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Feedback footer — shown on last page */}
+        {/* Feedback footer — last page only */}
         {isLastPage && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-gray-700">How was the story?</h3>
@@ -318,7 +324,7 @@ export const Player: React.FC = () => {
               ))}
             </div>
 
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+            <div className="pt-2 border-t border-gray-100">
               <button
                 onClick={handleContinueTomorrow}
                 disabled={markedContinue}

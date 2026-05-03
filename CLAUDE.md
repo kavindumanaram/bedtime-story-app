@@ -44,17 +44,17 @@ Vite exposes `VITE_` prefixed variables to the browser via `import.meta.env`. Al
 
 Routes `/login` and `/onboarding` are public. All others are wrapped in `AuthGuard`.
 
-| Route | Page | Purpose |
-|-------|------|---------|
-| `/login` | Login | Sign in / create account (email+password, Google OAuth) |
-| `/onboarding` | Onboarding | GDPR consent + add first child (shown once after sign-up) |
-| `/dashboard` | Dashboard | KPIs, Tonight's Story card, Continue card, charts |
-| `/library` | Library | Card grid of stories; per-child filter pills; navigates to Player on click |
-| `/create` | Create | Story generation with mode selector (New / Continue / Character) |
-| `/player/:id` | Player | Full-screen story player with feedback footer; sidebar hidden |
-| `/billing` | Billing | Free / Basic / Premium plan cards, invoice history |
-| `/settings` | Settings | Notification, playback, appearance (theme) prefs |
-| `/profile` | Profile | Parent info, full children CRUD with preferences UI |
+| Route         | Page       | Purpose                                                                    |
+| ------------- | ---------- | -------------------------------------------------------------------------- |
+| `/login`      | Login      | Sign in / create account (email+password, Google OAuth)                    |
+| `/onboarding` | Onboarding | GDPR consent + add first child (shown once after sign-up)                  |
+| `/dashboard`  | Dashboard  | KPIs, Tonight's Story card, Continue card, charts                          |
+| `/library`    | Library    | Card grid of stories; per-child filter pills; navigates to Player on click |
+| `/create`     | Create     | Story generation with mode selector (New / Continue / Character)           |
+| `/player/:id` | Player     | Full-screen story player with feedback footer; sidebar hidden              |
+| `/billing`    | Billing    | Free / Basic / Premium plan cards, invoice history                         |
+| `/settings`   | Settings   | Notification, playback, appearance (theme) prefs                           |
+| `/profile`    | Profile    | Parent info, full children CRUD with preferences UI                        |
 
 ### Auth Flow
 
@@ -73,11 +73,11 @@ The **Create** page uses `activeChild` automatically — no manual name/age inpu
 
 ### Plan Tiers
 
-| Plan | Monthly AI stories | Cover images | Nightly story |
-|------|--------------------|-------------|---------------|
-| `free` | 0 | No | Template only |
-| `basic` | 30 | No | AI text |
-| `premium` | Unlimited | Yes | AI text + image |
+| Plan      | Monthly AI stories | Cover images | Nightly story   |
+| --------- | ------------------ | ------------ | --------------- |
+| `free`    | 0                  | No           | Template only   |
+| `basic`   | 30                 | No           | AI text         |
+| `premium` | Unlimited          | Yes          | AI text + image |
 
 Plan is stored in `profiles.plan`. Quota counts live in `usage_quotas` (reset every 30 days). Exceeding the limit throws `PlanLimitError` which the Dashboard / Create pages catch and show an upgrade banner.
 
@@ -109,6 +109,7 @@ Plan is stored in `profiles.plan`. Quota counts live in `usage_quotas` (reset ev
 ### File-based DB (`data/db.json`)
 
 The Vite `db-api` plugin in `vite.config.ts` adds two middleware routes:
+
 - `GET /api/db` — reads `data/db.json`, returns `{ stories: [] }` if missing
 - `POST /api/db` — writes request body to `data/db.json`
 
@@ -120,37 +121,37 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 
 > **Important:** The daily story system, memory/continuation, and streak features require migrations `20260502_daily_story_system.sql` and `20260502_story_memory_system.sql` to be applied. Without them, the app degrades gracefully (template title still shows, story generation still works) but `daily_stories` tracking, streak counts, and "Continue Previous" will not persist.
 
-| File | Description |
-|------|-------------|
-| `20240101_initial_schema.sql` | Creates `profiles`, `children`, `stories`, `play_sessions`, RLS policies, `handle_new_user` trigger |
-| `20260502_add_child_preferences.sql` | Adds `preferences` JSONB to `children` (interests, tone, length) |
-| `20260502_daily_story_system.sql` | `plan` column on `profiles`; `daily_stories`, `usage_quotas`, `child_streaks` tables; RLS; quota trigger |
-| `20260502_story_memory_system.sql` | `story_series`, `child_story_memory`, `recurring_characters`, `story_feedback` tables; series columns on `stories`; RLS |
+| File                                 | Description                                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `20240101_initial_schema.sql`        | Creates `profiles`, `children`, `stories`, `play_sessions`, RLS policies, `handle_new_user` trigger                     |
+| `20260502_add_child_preferences.sql` | Adds `preferences` JSONB to `children` (interests, tone, length)                                                        |
+| `20260502_daily_story_system.sql`    | `plan` column on `profiles`; `daily_stories`, `usage_quotas`, `child_streaks` tables; RLS; quota trigger                |
+| `20260502_story_memory_system.sql`   | `story_series`, `child_story_memory`, `recurring_characters`, `story_feedback` tables; series columns on `stories`; RLS |
 
 > **Note:** The `handle_new_user` trigger automatically creates a `profiles` row when a user signs up, preventing the `gdpr_consent_at` upsert from failing silently in Onboarding.
 
 ### Key Files
 
-| File | Purpose |
-|------|---------|
-| `src/config.ts` | OpenAI API key, model names, image size — single source of truth |
-| `src/lib/supabase.ts` | Supabase client singleton + all TypeScript types (`Profile`, `Child`, `ChildPreferences`, `DbStory`, `DailyStory`, `ChildStreak`, `StorySeries`, `ChildStoryMemory`, `FeedbackReaction`, …) |
-| `src/lib/templateEngine.ts` | `renderTemplate`, `pickTonightTemplate`, `pickTonightTemplateWithMemory`, `pickContinuationTemplate` |
-| `src/data/storyTemplates.ts` | 40 static story templates (8 categories × 5 stories); used for Free plan and local title preview |
-| `src/contexts/AuthContext.tsx` | `AuthProvider` + `useAuth()` — session, profile, children, activeChild, setActiveChild |
-| `src/contexts/ThemeContext.tsx` | `ThemeProvider` + `useTheme()` — light/dark/auto, persists to localStorage |
-| `src/api/openaiApi.ts` | `generateStory(name, age, theme, options?)` (supports `continuation` context) + `generateCoverImage()` |
-| `src/api/storyDb.ts` | `saveStory()` / `loadStories()` / `loadStory(id)` — CRUD over `/api/db` (dev) |
-| `src/api/dailyStory.ts` | `getTonightAssignment`, `triggerRead`, `updateStreak`, `PlanLimitError` |
-| `src/api/storyMemory.ts` | `getMemoryContext`, `updateMemoryAfterRead`, `saveFeedback`, `upsertCharacter`, `getChildStreak`, `getTopCharacters` |
-| `src/api/storyContinuation.ts` | `triggerContinuation` — AI or template continuation with series tracking |
-| `src/pages/Login.tsx` | Sign in / create account with email+password and Google OAuth |
-| `src/pages/Onboarding.tsx` | Two-step: GDPR consent → add first child |
-| `src/pages/Create.tsx` | Story generation; mode selector (New / Continue Previous / Favourite Character); uses `activeChild` automatically |
-| `src/pages/Profile.tsx` | Parent info + full children CRUD (add/edit/delete) with preferences UI |
-| `src/pages/Player.tsx` | Full-screen story player; streak updated on last page; feedback footer on last page |
-| `src/pages/Dashboard.tsx` | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge |
-| `vite.config.ts` | Vite config + inline `db-api` middleware plugin for file-based persistence |
+| File                            | Purpose                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/config.ts`                 | OpenAI API key, model names, image size — single source of truth                                                                                                                            |
+| `src/lib/supabase.ts`           | Supabase client singleton + all TypeScript types (`Profile`, `Child`, `ChildPreferences`, `DbStory`, `DailyStory`, `ChildStreak`, `StorySeries`, `ChildStoryMemory`, `FeedbackReaction`, …) |
+| `src/lib/templateEngine.ts`     | `renderTemplate`, `pickTonightTemplate`, `pickTonightTemplateWithMemory`, `pickContinuationTemplate`                                                                                        |
+| `src/data/storyTemplates.ts`    | 40 static story templates (8 categories × 5 stories); used for Free plan and local title preview                                                                                            |
+| `src/contexts/AuthContext.tsx`  | `AuthProvider` + `useAuth()` — session, profile, children, activeChild, setActiveChild                                                                                                      |
+| `src/contexts/ThemeContext.tsx` | `ThemeProvider` + `useTheme()` — light/dark/auto, persists to localStorage                                                                                                                  |
+| `src/api/openaiApi.ts`          | `generateStory(name, age, theme, options?)` (supports `continuation` context) + `generateCoverImage()`                                                                                      |
+| `src/api/storyDb.ts`            | `saveStory()` / `loadStories()` / `loadStory(id)` — CRUD over `/api/db` (dev)                                                                                                               |
+| `src/api/dailyStory.ts`         | `getTonightAssignment`, `triggerRead`, `updateStreak`, `PlanLimitError`                                                                                                                     |
+| `src/api/storyMemory.ts`        | `getMemoryContext`, `updateMemoryAfterRead`, `saveFeedback`, `upsertCharacter`, `getChildStreak`, `getTopCharacters`                                                                        |
+| `src/api/storyContinuation.ts`  | `triggerContinuation` — AI or template continuation with series tracking                                                                                                                    |
+| `src/pages/Login.tsx`           | Sign in / create account with email+password and Google OAuth                                                                                                                               |
+| `src/pages/Onboarding.tsx`      | Two-step: GDPR consent → add first child                                                                                                                                                    |
+| `src/pages/Create.tsx`          | Story generation; mode selector (New / Continue Previous / Favourite Character); uses `activeChild` automatically                                                                           |
+| `src/pages/Profile.tsx`         | Parent info + full children CRUD (add/edit/delete) with preferences UI                                                                                                                      |
+| `src/pages/Player.tsx`          | Full-screen story player; streak updated on last page; feedback footer on last page                                                                                                         |
+| `src/pages/Dashboard.tsx`       | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge                                                                                     |
+| `vite.config.ts`                | Vite config + inline `db-api` middleware plugin for file-based persistence                                                                                                                  |
 
 ### Key Components
 

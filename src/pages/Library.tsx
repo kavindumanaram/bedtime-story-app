@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Play, User, Palette, Clock, BookOpen, Sparkles, Plus } from "lucide-react";
+import { Play, User, Palette, Clock, BookOpen, Sparkles, Plus, Search, Heart } from "lucide-react";
 import { loadStories, type GeneratedStory } from "../api/storyDb";
 import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -31,7 +32,7 @@ function SkeletonCard() {
   );
 }
 
-function StoryCard({ story }: { story: GeneratedStory }) {
+function StoryCard({ story, isLoved }: { story: GeneratedStory; isLoved: boolean }) {
   const navigate = useNavigate();
   const [imgError, setImgError] = useState(false);
 
@@ -53,6 +54,11 @@ function StoryCard({ story }: { story: GeneratedStory }) {
           <div className="w-full h-full bg-gradient-to-br from-violet-400 via-purple-400 to-indigo-500" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        {isLoved && (
+          <span className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-rose-500">
+            <Heart className="w-3 h-3 fill-rose-500" />
+          </span>
+        )}
         <span className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-purple-700">
           <Sparkles className="w-3 h-3" />
           AI
@@ -104,10 +110,13 @@ function StoryCard({ story }: { story: GeneratedStory }) {
 
 export const Library: React.FC = () => {
   const navigate = useNavigate();
-  const { children } = useAuth();
+  const { children, activeChild } = useAuth();
   const [stories, setStories] = useState<GeneratedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [childFilter, setChildFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "theme" | "loved">("newest");
+  const [likedStoryIds, setLikedStoryIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadStories().then((s) => {
@@ -116,9 +125,33 @@ export const Library: React.FC = () => {
     });
   }, []);
 
-  const filtered = childFilter
-    ? stories.filter((s) => s.childName === childFilter)
-    : stories;
+  useEffect(() => {
+    if (!activeChild) return;
+    supabase
+      .from("story_feedback")
+      .select("story_id")
+      .eq("child_id", activeChild.id)
+      .eq("reaction", "loved")
+      .then(({ data }) => {
+        setLikedStoryIds(new Set((data ?? []).map((d) => d.story_id)));
+      });
+  }, [activeChild]);
+
+  const filtered = stories
+    .filter((s) => childFilter === null || s.childName === childFilter)
+    .filter(
+      (s) =>
+        !searchQuery ||
+        s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.theme.toLowerCase().includes(searchQuery.toLowerCase()),
+    )
+    .sort((a, b) => {
+      if (sortOrder === "theme") return a.theme.localeCompare(b.theme);
+      if (sortOrder === "loved") {
+        return (likedStoryIds.has(b.id) ? 1 : 0) - (likedStoryIds.has(a.id) ? 1 : 0);
+      }
+      return 0;
+    });
 
   return (
     <div className="space-y-6">
@@ -142,6 +175,34 @@ export const Library: React.FC = () => {
             <Plus className="w-4 h-4" />
             Create Story
           </button>
+        </div>
+      </div>
+
+      {/* Search and sort */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by title or theme..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+          />
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          {(["newest", "theme", "loved"] as const).map((order) => (
+            <button
+              key={order}
+              onClick={() => setSortOrder(order)}
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors border ${
+                sortOrder === order
+                  ? "bg-primary text-white border-primary"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-primary/40 hover:text-primary"
+              }`}
+            >
+              {order === "newest" ? "Newest" : order === "theme" ? "By Theme" : "❤ Loved"}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -214,7 +275,7 @@ export const Library: React.FC = () => {
       {!loading && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filtered.map((story) => (
-            <StoryCard key={story.id} story={story} />
+            <StoryCard key={story.id} story={story} isLoved={likedStoryIds.has(story.id)} />
           ))}
         </div>
       )}
