@@ -100,11 +100,11 @@ Plan is stored in `profiles.plan`. Quota counts live in `usage_quotas` (reset ev
 
 1. **Mock data** — `src/data/mock.ts` holds sample stories and static chart arrays used by Dashboard.
 2. **Story generation** — `src/api/openaiApi.ts` → `generateStory()` calls OpenAI chat completions (model: `gpt-4o-mini`) → returns `{ title, summary, text[] }`. Accepts optional `continuation` context for episode continuity.
-3. **Image generation** — `src/api/openaiApi.ts` → `generateCoverImage()` calls OpenAI images (model: `gpt-image-1`) → returns base64 data URL. Premium plan only.
+3. **Image generation** — `src/api/openaiApi.ts` → `generateCoverImage()` calls OpenAI images (model: `gpt-image-1`) → returns base64 data URL. Premium plan only. Scene images generated progressively by `useProgressiveImages` hook.
 4. **Persistence (dev)** — `src/api/storyDb.ts` calls `GET /api/db` / `POST /api/db`, handled by a Vite middleware plugin in `vite.config.ts` that reads/writes `data/db.json`.
 5. **Persistence (prod target)** — `stories` table in Supabase. Daily story system and memory use their own Supabase tables (see migrations).
-6. **Create page** — Three modes: New Story (theme input), Continue Previous (reads memory), Favourite Character (chip → pre-fills theme). All modes: idle → writing → painting → done → navigate to Player.
-7. **Player** — `loadStory(id)` checks `data/db.json`; renders `LargeStoryPlayer` carousel + text reader. Streak updated on last page. Feedback footer shown on last page.
+6. **Create page** — Three modes: New Story (theme input), Continue Previous (reads memory), Favourite Character (chip → pre-fills theme). Navigates immediately after text generation; cover image saved to db.json + Supabase in background via `updateStoryCoverUrl`.
+7. **Player** — `loadStory(id)` checks `data/db.json`; renders 3-phase ritual (Preparation → CartoonStoryIntro → Player) for new stories, brief `CinematicIntro` for revisited Library stories. Progressive scene images via `useProgressiveImages`. Streak updated on last page. Feedback footer shown on last page.
 
 ### File-based DB (`data/db.json`)
 
@@ -140,8 +140,9 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 | `src/data/storyTemplates.ts`    | 40 static story templates (8 categories × 5 stories); used for Free plan and local title preview                                                                                            |
 | `src/contexts/AuthContext.tsx`  | `AuthProvider` + `useAuth()` — session, profile, children, activeChild, setActiveChild                                                                                                      |
 | `src/contexts/ThemeContext.tsx` | `ThemeProvider` + `useTheme()` — light/dark/auto, persists to localStorage                                                                                                                  |
-| `src/api/openaiApi.ts`          | `generateStory(name, age, theme, options?)` (supports `continuation` context) + `generateCoverImage()`                                                                                      |
-| `src/api/storyDb.ts`            | `saveStory()` / `loadStories()` / `loadStory(id)` — CRUD over `/api/db` (dev)                                                                                                               |
+| `src/api/openaiApi.ts`          | `generateStory(name, age, theme, options?)` (supports `continuation` context) + `generateCoverImage()` + `generateSceneImage()`                                                             |
+| `src/api/sceneImageApi.ts`      | Pure functions: `buildStyleContext()`, `buildScenePrompts()`, `paragraphToImageIndex()` — scene image prompt construction                                                                    |
+| `src/api/storyDb.ts`            | `saveStory()` / `loadStories()` / `loadStory(id)` / `updateStoryImages()` / `updateStoryCoverUrl()` — CRUD over `/api/db`; `updateStoryCoverUrl` writes db.json + Supabase best-effort      |
 | `src/api/dailyStory.ts`         | `getTonightAssignment`, `triggerRead`, `updateStreak`, `PlanLimitError`                                                                                                                     |
 | `src/api/storyMemory.ts`        | `getMemoryContext`, `updateMemoryAfterRead`, `saveFeedback`, `upsertCharacter`, `getChildStreak`, `getTopCharacters`                                                                        |
 | `src/api/storyContinuation.ts`  | `triggerContinuation` — AI or template continuation with series tracking                                                                                                                    |
@@ -149,18 +150,23 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 | `src/pages/Onboarding.tsx`      | Two-step: GDPR consent → add first child                                                                                                                                                    |
 | `src/pages/Create.tsx`          | Story generation; mode selector (New / Continue Previous / Favourite Character); uses `activeChild` automatically                                                                           |
 | `src/pages/Profile.tsx`         | Parent info + full children CRUD (add/edit/delete) with preferences UI                                                                                                                      |
-| `src/pages/Player.tsx`          | Full-screen story player; streak updated on last page; feedback footer on last page                                                                                                         |
+| `src/pages/Player.tsx`          | 3-phase ritual for new stories (`RitualPhase`: preparation → intro → player); `CinematicIntro` for Library stories; TTS narration with `narratableText` fallback (text[] → summary); progressive scene images; streak on last page; feedback footer |
 | `src/pages/Dashboard.tsx`       | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge                                                                                     |
 | `vite.config.ts`                | Vite config + inline `db-api` middleware plugin for file-based persistence                                                                                                                  |
 
 ### Key Components
 
-- **`LargeStoryPlayer`** — Full-screen image carousel with text overlays, TTS via Web Speech API, fullscreen toggle, and page navigation.
+- **`LargeStoryPlayer`** — Full-screen image carousel with Ken Burns animation, parallax, direction-aware transitions, shimmer placeholders for loading images, sparkle tap effects, `nextPageGuardCount` prop (disables Next while early pages still generating), and ambient music toggle. Fullscreen only triggers when its own container is the fullscreen element.
+- **`BedtimePreparationScreen`** — Phase 1 ritual overlay (35 s default). Waits for both `minDurationMs` AND `readyToAdvance` before auto-completing. Lullaby via Web Audio API.
+- **`CartoonStoryIntro`** — Phase 2 movie-style intro (18 s, 4 acts). Enters Act 5 waiting state if images not ready after acts complete. Background image fades in once first scene image arrives.
+- **`CinematicIntro`** — Brief intro for revisited Library stories (5 s). Calls `document.exitFullscreen()` when dismissing so the player returns to normal mode.
+- **`AudioControls`** — TTS play/pause bar with speed selector and narrator picker. Always visible when `hasParagraphs` (narrates `text[]` falling back to `summary`).
+- **`GenerationProgress`** — Writing phase loading overlay with rotating messages and star field.
 - **`Sidebar`** — Child switcher (coloured avatar chips) + nav links + parent sign-out. Hidden on `/player` routes. Has `dark:` variants.
 - **`Topbar`** — Search bar + user avatar. Has `dark:` variants.
 - **`Card`** — White card wrapper; has `dark:bg-gray-800` variant.
 - **`Badge`** — Pill badges with `new`, `popular`, `downloaded`, `default` variants.
-- **`StoryCard`** (inline in `Library.tsx`) — Card with cover image, title, summary, child/theme/age metadata.
+- **`StoryCard`** (inline in `Library.tsx`) — Card with cover image using `pickThumb` fallback chain (`coverImage → images[0] → gradient placeholder`), title, summary, child/theme/age metadata.
 
 ### Dark Mode
 
@@ -168,11 +174,14 @@ Tailwind is configured with `darkMode: 'class'`. `ThemeProvider` toggles the `da
 
 ### Testing
 
-Tests live alongside source files (`*.test.ts` / `*.test.tsx`):
+Tests live alongside source files (`*.test.ts` / `*.test.tsx`). Run: `npm run test:run` (48 tests across 6 files).
 
 - `src/api/openaiApi.test.ts` — mocks `fetch`, tests URL, headers, response parsing, error handling
-- `src/api/storyDb.test.ts` — mocks `fetch`, tests all CRUD operations against `/api/db`
-- `src/pages/Player.test.tsx` — component tests using `@testing-library/react`, mocks `openaiApi`, `storyDb`, `AuthContext`, `dailyStory`, and `storyMemory` modules
+- `src/api/storyDb.test.ts` — mocks `fetch`, tests all CRUD operations including `updateStoryImages`
+- `src/hooks/useProgressiveImages.test.ts` — pure-logic tests for scene image fill and `nextPageGuardCount` navigation guard
+- `src/components/BedtimePreparationScreen.test.tsx` — timer-based gating tests using `vi.useFakeTimers()` for the `minDurationMs` + `readyToAdvance` completion logic
+- `src/pages/Player.test.tsx` — component tests; `CinematicIntro` auto-dismissed in tests via mock
+- `src/pages/Library.test.tsx` — pure-logic tests for `pickThumb` fallback chain (coverImage → images[0] → null)
 
 ### Deployment
 

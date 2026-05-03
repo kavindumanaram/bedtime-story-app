@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Sparkles, Heart, AlertTriangle, Clock, Rabbit, Mountain, ArrowRight, Check,
+  Play, X,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import LargeStoryPlayer from "../components/LargeStoryPlayer";
+import { BedtimePreparationScreen } from "../components/BedtimePreparationScreen";
+import { CartoonStoryIntro } from "../components/CartoonStoryIntro";
+import { CinematicIntro } from "../components/CinematicIntro";
 import { AudioControls, VOICE_PROFILES } from "../components/AudioControls";
 import { stories } from "../data/mock";
 import { loadStory } from "../api/storyDb";
@@ -13,6 +17,8 @@ import { supabase } from "../lib/supabase";
 import { updateStreak } from "../api/dailyStory";
 import { updateMemoryAfterRead, saveFeedback } from "../api/storyMemory";
 import { useAuth } from "../contexts/AuthContext";
+import { useProgressiveImages } from "../hooks/useProgressiveImages";
+import type { SceneSlot } from "../api/sceneImageApi";
 import type { FeedbackReaction } from "../lib/supabase";
 
 const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
@@ -23,10 +29,23 @@ const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className
   { reaction: "more_adventure", icon: Mountain,       label: "More adventure" },
 ];
 
+type RitualPhase = "preparation" | "intro" | "player";
+
+type RouterState = {
+  slots?: SceneSlot[];
+  paragraphCount?: number;
+  childName?: string;
+  storyTitle?: string;
+  theme?: string;
+};
+
 export const Player: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { activeChild, profile } = useAuth();
+
+  const routerState = (location.state ?? {}) as RouterState;
 
   const knownMock = stories.find((s) => s.id === id);
   const [currentStory, setCurrentStory] = useState(knownMock ?? stories[0]);
@@ -35,6 +54,17 @@ export const Player: React.FC = () => {
   const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   const [isTTSLoading, setIsTTSLoading] = useState(false);
   const [isDimmed, setIsDimmed] = useState(false);
+  const isNewStory = !!(routerState.childName && routerState.storyTitle);
+  const [ritualPhase, setRitualPhase] = useState<RitualPhase>(
+    isNewStory ? "preparation" : "player",
+  );
+  const [showOldIntro, setShowOldIntro] = useState(false);
+  const [showPlayPrompt, setShowPlayPrompt] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [maxWaitElapsed, setMaxWaitElapsed] = useState(false);
+  const [userSkipped, setUserSkipped] = useState(false);
+
+  const [sceneSlots] = useState<SceneSlot[]>(routerState.slots ?? []);
 
   // Feedback state
   const [selectedReaction, setSelectedReaction] = useState<FeedbackReaction | null>(null);
@@ -80,7 +110,57 @@ export const Player: React.FC = () => {
     });
   }, [id]);
 
-  // Load TTS voices — async in Chrome, synchronous in Safari
+  const paragraphs = currentStory.text ?? [];
+  // Fallback: if story has no paragraph text, narrate from summary so AudioControls always works
+  const narratableText = paragraphs.length > 0 ? paragraphs : (currentStory.summary ? [currentStory.summary] : []);
+
+  // Progressive image generation — empty slots → hook does nothing
+  const { images: progressiveImages, readyCount } = useProgressiveImages({
+    slots: sceneSlots,
+    paragraphCount: routerState.paragraphCount ?? paragraphs.length,
+    storyId: id ?? null,
+  });
+
+  // Intro gating: keep prep/intro screens until MIN_READY_IMAGES are loaded
+  const MIN_READY_IMAGES = 3;
+  const MAX_WAIT_MS = 120_000;
+  const readyToAdvance = isNewStory && (readyCount >= MIN_READY_IMAGES || maxWaitElapsed);
+
+  // 120s absolute fallback — force past any ritual phase
+  useEffect(() => {
+    if (!isNewStory) return;
+    const t = setTimeout(() => {
+      setMaxWaitElapsed(true);
+      setRitualPhase((p) => p !== "player" ? "player" : p);
+    }, MAX_WAIT_MS);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Old stories: show brief CinematicIntro once loading finishes
+  useEffect(() => {
+    if (!isLoading && !isNewStory) {
+      setShowOldIntro(true);
+    }
+  }, [isLoading, isNewStory]);
+
+  // New stories: auto-start narration when ritual completes
+  useEffect(() => {
+    if (ritualPhase === "player" && isNewStory && narratableText.length > 0) {
+      setTimeout(() => speakParagraph(narratableText[textPage]), 350);
+    }
+  // speakParagraph is stable (refs only); paragraphs won't change after load
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ritualPhase]);
+
+  // Auto-hide play prompt after 5 s
+  useEffect(() => {
+    if (!showPlayPrompt) return;
+    const t = setTimeout(() => setShowPlayPrompt(false), 5000);
+    return () => clearTimeout(t);
+  }, [showPlayPrompt]);
+
+  // Load TTS voices
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis?.getVoices().filter((v) => v.lang.startsWith("en")) ?? [];
@@ -109,7 +189,6 @@ export const Player: React.FC = () => {
     utter.rate = ttsSpeedRef.current;
     utter.lang = "en-US";
     if (ttsVoiceRef.current) utter.voice = ttsVoiceRef.current;
-    // onstart clears the loading spinner once the browser actually begins speaking
     utter.onstart = () => setIsTTSLoading(false);
     utter.onend = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
     utter.onerror = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
@@ -135,9 +214,8 @@ export const Player: React.FC = () => {
   useEffect(() => { stopTTS(); }, [textPage]);
   useEffect(() => { return () => stopTTS(); }, []);
 
-  const paragraphs = currentStory.text ?? [];
-  const hasParagraphs = paragraphs.length > 0;
-  const isLastPage = hasParagraphs && textPage === paragraphs.length - 1;
+  const hasParagraphs = narratableText.length > 0;
+  const isLastPage = hasParagraphs && textPage === narratableText.length - 1;
 
   useEffect(() => {
     if (isLastPage && !streakUpdated && activeChild && profile) {
@@ -166,7 +244,6 @@ export const Player: React.FC = () => {
     setTtsSpeed(speed);
   };
 
-  // Smart voice matching: keyword search first, index fallback, then first available
   const handleVoiceChange = (voiceId: string) => {
     setTtsVoice(voiceId);
     if (availableVoices.length === 0) { ttsVoiceRef.current = null; return; }
@@ -187,14 +264,20 @@ export const Player: React.FC = () => {
     }
   };
 
-  const carouselPages = (currentStory as any).images?.length
-    ? (currentStory as any).images
-    : currentStory.pages?.length
-      ? currentStory.pages
-      : undefined;
+  // New-generation stories (slots present): always use progressiveImages so shimmer shows
+  // while generating and images fill in as they arrive.
+  // Revisited/cached stories (no slots): fall back to images stored in Supabase / local db.
+  const carouselPages: (string | null)[] | undefined =
+    sceneSlots.length > 0
+      ? (progressiveImages.length > 0 ? progressiveImages : undefined)
+      : ((currentStory as any).images?.length
+          ? (currentStory as any).images
+          : currentStory.pages?.length
+            ? currentStory.pages
+            : undefined);
 
   const ttsDurationSecs = hasParagraphs
-    ? Math.max(1, Math.round(paragraphs[textPage].length * 0.065 / ttsSpeed))
+    ? Math.max(1, Math.round(narratableText[textPage].length * 0.065 / ttsSpeed))
     : 0;
   const ttsDuration = `${Math.floor(ttsDurationSecs / 60)}:${String(ttsDurationSecs % 60).padStart(2, "0")}`;
 
@@ -236,7 +319,47 @@ export const Player: React.FC = () => {
 
   return (
     <div className={`min-h-screen transition-colors duration-700 ${isDimmed ? "bg-gray-950" : "bg-gray-50"}`}>
-      {/* Back nav — fades out in Story Mode */}
+      {/* Phase 1: Bedtime preparation — waits for readyToAdvance AND minDurationMs */}
+      {ritualPhase === "preparation" && (
+        <BedtimePreparationScreen
+          childName={routerState.childName ?? ""}
+          storyTitle={routerState.storyTitle ?? currentStory.title}
+          theme={routerState.theme ?? "adventure"}
+          minDurationMs={35_000}
+          readyToAdvance={readyToAdvance}
+          skipAfterMs={10_000}
+          onComplete={() => setRitualPhase("intro")}
+          onSkip={() => { setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
+        />
+      )}
+
+      {/* Phase 2: Cinematic story intro — waits for readyToAdvance after acts */}
+      {ritualPhase === "intro" && (
+        <CartoonStoryIntro
+          childName={routerState.childName ?? ""}
+          storyTitle={routerState.storyTitle ?? currentStory.title}
+          theme={routerState.theme ?? "adventure"}
+          backgroundImage={progressiveImages[0] ?? null}
+          duration={18_000}
+          readyToAdvance={readyToAdvance}
+          onComplete={() => setRitualPhase("player")}
+          onSkip={() => { setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
+        />
+      )}
+
+      {/* Brief cinematic intro for revisited stories */}
+      {showOldIntro && (
+        <CinematicIntro
+          childName={activeChild?.name ?? ""}
+          storyTitle={currentStory.title}
+          duration={5000}
+          minDuration={0}
+          enterFullscreen
+          onDone={() => { setShowOldIntro(false); setShowPlayPrompt(true); }}
+        />
+      )}
+
+      {/* Back nav */}
       <div
         className={`px-4 lg:px-8 py-4 flex items-center justify-between transition-opacity duration-500 ${
           isDimmed ? "opacity-0 pointer-events-none" : ""
@@ -259,26 +382,111 @@ export const Player: React.FC = () => {
       </div>
 
       <div className="px-4 lg:px-8 pb-10 space-y-4">
-        {/* Carousel — single source of truth for current page via onPageChange */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <LargeStoryPlayer
-            pages={carouselPages}
-            subtitles={paragraphs}
-            initialIndex={textPage}
-            onPageChange={setTextPage}
-            storyId={currentStory.id}
-            isDimmed={isDimmed}
-            onToggleDim={() => setIsDimmed((d) => !d)}
-          />
+        {/* Carousel + overlays */}
+        <div className="relative">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <LargeStoryPlayer
+              pages={carouselPages}
+              subtitles={narratableText}
+              initialIndex={textPage}
+              onPageChange={setTextPage}
+              storyId={currentStory.id}
+              isDimmed={isDimmed}
+              onToggleDim={() => setIsDimmed((d) => !d)}
+              onSettingsClick={() => setShowSettings((s) => !s)}
+              nextPageGuardCount={userSkipped ? 0 : (sceneSlots.length > 0 ? MIN_READY_IMAGES : 0)}
+            />
+          </div>
+
+          {/* Play prompt — appears for 5 s after intro closes */}
+          {showPlayPrompt && hasParagraphs && (
+            <div
+              className="absolute inset-0 flex items-center justify-center rounded-2xl cursor-pointer"
+              style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, transparent 70%)" }}
+              onClick={() => { speakParagraph(narratableText[textPage]); setShowPlayPrompt(false); }}
+            >
+              <div className="relative">
+                <div className="absolute inset-0 rounded-full bg-white/40 animate-ping" />
+                <button
+                  className="relative w-20 h-20 rounded-full bg-white/90 backdrop-blur-sm shadow-2xl flex items-center justify-center hover:bg-white transition-colors"
+                  aria-label="Play narration"
+                >
+                  <Play className="w-8 h-8 text-gray-900 ml-1" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Voice settings panel */}
+          {showSettings && (
+            <div
+              className="absolute inset-0 z-40 flex items-end rounded-2xl overflow-hidden"
+              onClick={() => setShowSettings(false)}
+            >
+              <div
+                className="w-full bg-gray-900/95 backdrop-blur-sm p-5 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white font-semibold text-sm">Voice Settings</h3>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="text-white/50 hover:text-white p-1 transition-colors"
+                    aria-label="Close settings"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-white/50 text-xs uppercase tracking-wider">Narrator</p>
+                  <div className="flex flex-wrap gap-2">
+                    {VOICE_PROFILES.map((vp) => (
+                      <button
+                        key={vp.id}
+                        onClick={() => handleVoiceChange(vp.id)}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
+                          ttsVoice === vp.id
+                            ? "bg-primary text-white"
+                            : "bg-white/10 text-white/70 hover:bg-white/20"
+                        }`}
+                      >
+                        {vp.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-white/50 text-xs uppercase tracking-wider">Speed</p>
+                  <div className="flex gap-2">
+                    {([0.8, 1.0, 1.2, 1.5] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => handleSpeedChange(s)}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-medium transition-colors ${
+                          ttsSpeed === s
+                            ? "bg-primary text-white"
+                            : "bg-white/10 text-white/70 hover:bg-white/20"
+                        }`}
+                      >
+                        {s === 0.8 ? "Slow" : s === 1.0 ? "Normal" : s === 1.2 ? "Fast" : "Faster"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Audio controls — directly below carousel, no separate text reader card */}
+        {/* Audio controls */}
         {hasParagraphs && (
           <AudioControls
             isPlaying={isTTSPlaying}
             isLoading={isTTSLoading}
             hasVoices={availableVoices.length > 0}
-            onPlay={() => speakParagraph(paragraphs[textPage])}
+            onPlay={() => speakParagraph(narratableText[textPage])}
             onPause={stopTTS}
             onSpeedChange={handleSpeedChange}
             onVoiceChange={handleVoiceChange}
@@ -335,7 +543,7 @@ export const Player: React.FC = () => {
                 }`}
               >
                 {markedContinue
-                  ? <><Check className="w-4 h-4" /> We'll remember this!</>
+                  ? <><Check className="w-4 h-4" /> We&apos;ll remember this!</>
                   : <><ArrowRight className="w-4 h-4" /> Continue this story tomorrow</>}
               </button>
             </div>

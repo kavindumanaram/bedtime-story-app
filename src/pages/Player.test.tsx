@@ -1,3 +1,4 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -5,6 +6,7 @@ import { Player } from "./Player";
 
 vi.mock("../api/storyDb", () => ({
   loadStory: vi.fn().mockResolvedValue(undefined),
+  updateStoryImages: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../contexts/AuthContext", () => ({
@@ -18,6 +20,22 @@ vi.mock("../api/dailyStory", () => ({
 vi.mock("../api/storyMemory", () => ({
   updateMemoryAfterRead: vi.fn().mockResolvedValue(undefined),
   saveFeedback: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../hooks/useProgressiveImages", () => ({
+  useProgressiveImages: () => ({ images: [], allDone: false, readyCount: 0 }),
+}));
+
+vi.mock("../hooks/useAmbientAudio", () => ({
+  useAmbientAudio: () => ({ isPlaying: false, toggle: vi.fn() }),
+}));
+
+// Auto-dismiss the cinematic intro so it never blocks player content in tests
+vi.mock("../components/CinematicIntro", () => ({
+  CinematicIntro: ({ onDone }: { onDone: () => void }) => {
+    React.useEffect(() => { onDone(); }, []);
+    return null;
+  },
 }));
 
 import { loadStory } from "../api/storyDb";
@@ -41,7 +59,8 @@ describe("Player", () => {
     renderPlayer();
     expect(screen.getByText("Back to Library")).toBeInTheDocument();
     expect(screen.getByText("Create New Story")).toBeInTheDocument();
-    expect(screen.getByText("Story Text")).toBeInTheDocument();
+    // stories[0] is "The Moon's Lullaby" from mock data
+    expect(screen.getByText("The Moon's Lullaby")).toBeInTheDocument();
   });
 
   it("uses saved story from db on mount if available", async () => {
@@ -82,7 +101,7 @@ describe("Player", () => {
     expect(screen.getAllByText(/Page 1 of 4/).length).toBeGreaterThan(0);
   });
 
-  it("navigates paragraphs with prev/next buttons", async () => {
+  it("navigates pages with prev/next buttons", async () => {
     (loadStory as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "1",
       title: "Forest Tale",
@@ -98,7 +117,8 @@ describe("Player", () => {
     await waitFor(() => {
       expect(screen.getAllByText("First paragraph").length).toBeGreaterThan(0);
     });
-    fireEvent.click(screen.getByLabelText("Next paragraph"));
+    // LargeStoryPlayer uses "Next page" aria-label
+    fireEvent.click(screen.getByLabelText("Next page"));
     expect(screen.getAllByText("Second paragraph").length).toBeGreaterThan(0);
   });
 });

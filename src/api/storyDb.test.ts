@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { saveStory, loadStories, loadStory, type GeneratedStory } from "./storyDb";
+import { saveStory, loadStories, loadStory, updateStoryImages, type GeneratedStory } from "./storyDb";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -91,5 +91,50 @@ describe("loadStory", () => {
   it("returns undefined for an unknown id", async () => {
     mockFetch.mockReturnValueOnce(dbResponse([]));
     expect(await loadStory("does-not-exist")).toBeUndefined();
+  });
+});
+
+describe("updateStoryImages", () => {
+  it("writes the image url at the given index into the story", async () => {
+    const story = makeStory({ images: [] });
+    mockFetch.mockReturnValueOnce(dbResponse([story])); // readDb
+    mockFetch.mockReturnValueOnce(Promise.resolve({ ok: true } as Response)); // writeDb
+
+    await updateStoryImages(story.id, 0, "data:image/png;base64,img0");
+
+    const written = JSON.parse(mockFetch.mock.calls[1][1].body);
+    expect(written.stories[0].images[0]).toBe("data:image/png;base64,img0");
+  });
+
+  it("extends the images array when imageIndex is beyond current length", async () => {
+    const story = makeStory({ images: ["img0"] });
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(Promise.resolve({ ok: true } as Response));
+
+    await updateStoryImages(story.id, 2, "img2");
+
+    const written = JSON.parse(mockFetch.mock.calls[1][1].body);
+    expect(written.stories[0].images).toHaveLength(3);
+    expect(written.stories[0].images[2]).toBe("img2");
+  });
+
+  it("does nothing when the story id is not found", async () => {
+    mockFetch.mockReturnValueOnce(dbResponse([])); // readDb — story not found
+    await updateStoryImages("unknown-id", 0, "img0");
+    // writeDb should NOT have been called
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves other stories when updating images", async () => {
+    const a = makeStory({ title: "Alpha" });
+    const b = makeStory({ title: "Beta" });
+    mockFetch.mockReturnValueOnce(dbResponse([a, b]));
+    mockFetch.mockReturnValueOnce(Promise.resolve({ ok: true } as Response));
+
+    await updateStoryImages(a.id, 0, "img0");
+
+    const written = JSON.parse(mockFetch.mock.calls[1][1].body);
+    expect(written.stories).toHaveLength(2);
+    expect(written.stories[1].title).toBe("Beta");
   });
 });

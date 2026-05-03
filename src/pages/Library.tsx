@@ -32,9 +32,19 @@ function SkeletonCard() {
   );
 }
 
+/** Priority: coverImage → images[0] → null (shows gradient placeholder). */
+export function pickThumb(story: GeneratedStory, imgError: boolean): string | null {
+  if (imgError) return null;
+  if (story.coverImage) return story.coverImage;
+  if (story.images?.[0]) return story.images[0];
+  return null;
+}
+
 function StoryCard({ story, isLoved }: { story: GeneratedStory; isLoved: boolean }) {
   const navigate = useNavigate();
   const [imgError, setImgError] = useState(false);
+
+  const thumb = pickThumb(story, imgError);
 
   return (
     <div
@@ -43,9 +53,9 @@ function StoryCard({ story, isLoved }: { story: GeneratedStory; isLoved: boolean
     >
       {/* Cover image */}
       <div className="relative w-full aspect-[4/3] overflow-hidden">
-        {!imgError && story.coverImage ? (
+        {thumb ? (
           <img
-            src={story.coverImage}
+            src={thumb}
             alt={story.title}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"

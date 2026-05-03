@@ -1,41 +1,46 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Palette } from "lucide-react";
 
-const WRITING_MESSAGES = [
-  "Once upon a time...",
-  "Creating your characters...",
-  "Writing the adventure...",
-  "Adding the magical details...",
-  "Almost ready...",
+const MESSAGES = [
+  "✨ Once upon a time...",
+  "🌙 Creating your characters...",
+  "⭐ Writing the adventure...",
+  "🌟 Adding magical details...",
+  "🦋 Your story is almost ready...",
+  "🌈 Painting the tale with words...",
 ];
 
-const PAINTING_MESSAGES = [
-  "Drawing the magical forest...",
-  "Painting the night sky...",
-  "Adding the finishing touches...",
+type StarDef = { top: string; left: string; size: number; delay: number };
+const STARS: StarDef[] = [
+  { top: "12%", left: "8%",  size: 1.0, delay: 0   },
+  { top: "20%", left: "88%", size: 0.8, delay: 0.6 },
+  { top: "65%", left: "5%",  size: 1.2, delay: 1.0 },
+  { top: "75%", left: "92%", size: 0.9, delay: 0.3 },
+  { top: "40%", left: "95%", size: 1.1, delay: 1.4 },
+  { top: "85%", left: "15%", size: 0.8, delay: 0.8 },
+  { top: "30%", left: "3%",  size: 1.0, delay: 1.7 },
+  { top: "55%", left: "97%", size: 0.7, delay: 0.2 },
 ];
 
 interface Props {
   phase: "writing" | "painting";
   coverImage: string | null;
+  childName?: string;
 }
 
-export const GenerationProgress: React.FC<Props> = ({ phase, coverImage }) => {
+export const GenerationProgress: React.FC<Props> = ({ phase, coverImage, childName }) => {
   const [messageIndex, setMessageIndex] = useState(0);
-  const [progress, setProgress] = useState(phase === "writing" ? 5 : 88);
+  const [progress, setProgress] = useState(5);
 
   useEffect(() => {
-    const msgs = phase === "writing" ? WRITING_MESSAGES : PAINTING_MESSAGES;
-    const maxProg = phase === "writing" ? 88 : 97;
     setMessageIndex(0);
-    setProgress(phase === "writing" ? 5 : 88);
+    setProgress(5);
 
     const msgInterval = setInterval(() => {
-      setMessageIndex((i) => (i + 1) % msgs.length);
-    }, 3000);
+      setMessageIndex((i) => (i + 1) % MESSAGES.length);
+    }, 2500);
 
     const progInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 1.5, maxProg));
+      setProgress((p) => Math.min(p + 1.2, 88));
     }, 400);
 
     return () => {
@@ -44,69 +49,103 @@ export const GenerationProgress: React.FC<Props> = ({ phase, coverImage }) => {
     };
   }, [phase]);
 
-  const messages = phase === "writing" ? WRITING_MESSAGES : PAINTING_MESSAGES;
+  if (phase === "painting" && coverImage !== null) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-6">
+        <img src={coverImage} alt="Story cover" className="w-48 h-48 rounded-2xl object-cover shadow-lg" />
+        <p className="text-sm text-gray-500">Finalising your story...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center py-12 gap-8 w-full">
-      {phase === "writing" ? (
+    <>
+      <style>{`
+        @keyframes twinkleGen {
+          0%, 100% { opacity: 0.15; transform: scale(0.75); }
+          50%       { opacity: 0.9;  transform: scale(1.3);  }
+        }
+        @keyframes floatMsgIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0);   }
+        }
+        @keyframes wandSway {
+          0%, 100% { transform: rotate(-12deg) scale(1);    }
+          50%       { transform: rotate(12deg)  scale(1.08); }
+        }
+        @keyframes ringPing {
+          0%   { transform: scale(1);    opacity: 0.6; }
+          100% { transform: scale(1.55); opacity: 0;   }
+        }
+      `}</style>
+
+      <div className="relative flex flex-col items-center justify-center py-12 gap-6 w-full overflow-hidden">
+        {/* Decorative star field */}
+        {STARS.map((s, i) => (
+          <span
+            key={i}
+            className="absolute pointer-events-none text-amber-400 select-none"
+            style={{
+              top: s.top,
+              left: s.left,
+              fontSize: `${s.size * 1.1}rem`,
+              animation: `twinkleGen ${2 + i * 0.3}s ease-in-out ${s.delay}s infinite`,
+            }}
+          >
+            ✦
+          </span>
+        ))}
+
+        {/* Wand pulse */}
         <div className="relative flex items-center justify-center w-28 h-28">
-          <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-          <div className="absolute inset-3 rounded-full bg-primary/10 animate-ping [animation-delay:150ms]" />
-          <div className="relative z-10 w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
-            <Sparkles className="w-8 h-8 text-primary animate-spin [animation-duration:3s]" />
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-lg">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
-              {i === 0 && coverImage ? (
-                <img
-                  src={coverImage}
-                  alt="Generated illustration"
-                  className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
-                />
-              ) : (
-                <div className="w-full h-full animate-pulse bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200" />
-              )}
-              {i === 0 && !coverImage && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-primary animate-spin [animation-duration:2s]" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="text-center space-y-2">
-        <div className="flex items-center justify-center gap-2 min-h-[28px]">
-          {phase === "painting" && <Palette className="w-5 h-5 text-primary" />}
-          <p className="text-lg font-semibold text-gray-800">
-            {messages[messageIndex]}
-          </p>
-        </div>
-        <p className="text-sm text-gray-400">Usually 8–15 seconds</p>
-        {phase === "writing" && (
-          <div className="flex items-center justify-center gap-1.5 mt-1">
-            <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:0ms]" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:150ms]" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:300ms]" />
-          </div>
-        )}
-      </div>
-
-      <div className="w-full max-w-xs space-y-2">
-        <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
           <div
-            className="h-full rounded-full bg-primary transition-all duration-700"
-            style={{ width: `${progress}%` }}
+            className="absolute inset-0 rounded-full bg-primary/25"
+            style={{ animation: "ringPing 1.8s ease-out infinite" }}
           />
+          <div
+            className="absolute inset-3 rounded-full bg-amber-200/30"
+            style={{ animation: "ringPing 1.8s ease-out 0.6s infinite" }}
+          />
+          <span
+            className="relative z-10 text-5xl select-none"
+            style={{ animation: "wandSway 2.8s ease-in-out infinite" }}
+          >
+            🪄
+          </span>
         </div>
-        <p className="text-xs text-gray-400 text-center">
-          Step {phase === "writing" ? "1" : "2"} of 2
-        </p>
+
+        {/* Messages */}
+        <div className="text-center space-y-1.5">
+          {childName && (
+            <p className="text-sm text-gray-400">
+              Creating a story for{" "}
+              <span className="text-primary font-semibold">{childName}</span>
+            </p>
+          )}
+          <p
+            key={messageIndex}
+            className="text-lg font-semibold text-gray-800"
+            style={{ animation: "floatMsgIn 0.5s ease-out both" }}
+          >
+            {MESSAGES[messageIndex]}
+          </p>
+          <p className="text-xs text-gray-400">Usually 8–15 seconds</p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full max-w-xs space-y-1.5">
+          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-primary via-emerald-400 to-amber-400 transition-all duration-700"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-gray-400 px-0.5">
+            <span>Writing your story…</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };

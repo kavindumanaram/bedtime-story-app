@@ -107,3 +107,24 @@ export async function generateCoverImage(title: string, summary: string): Promis
 
   return `data:image/png;base64,${b64}`;
 }
+
+export async function generateSceneImage(prompt: string): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.openai.imageModel,
+      prompt,
+      size: config.openai.imageSize,
+      n: 1,
+    }),
+  });
+  if (!res.ok) throw new Error(`Scene image failed: ${res.statusText}`);
+  const data = await res.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("No image data returned");
+  return `data:image/png;base64,${b64}`;
+}

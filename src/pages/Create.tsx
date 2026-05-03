@@ -11,18 +11,18 @@ import {
   AlertCircle,
   ArrowRight,
   Star,
-  RefreshCw,
 } from "lucide-react";
 import { generateStory, generateCoverImage } from "../api/openaiApi";
-import { saveStory, type GeneratedStory } from "../api/storyDb";
+import { saveStory, updateStoryCoverUrl, type GeneratedStory } from "../api/storyDb";
 import { triggerContinuation } from "../api/storyContinuation";
 import { getMemoryContext, getTopCharacters } from "../api/storyMemory";
 import { PlanLimitError } from "../api/dailyStory";
+import { buildStyleContext, buildScenePrompts, type SceneSlot } from "../api/sceneImageApi";
 import { useAuth } from "../contexts/AuthContext";
 import type { MemoryContext } from "../api/storyMemory";
 import { GenerationProgress } from "../components/GenerationProgress";
 
-type CreateState = "idle" | "writing" | "painting" | "done";
+type CreateState = "idle" | "writing" | "done";
 type StoryMode = "new" | "continue" | "character";
 
 const MODE_LABELS: Record<StoryMode, string> = {
@@ -68,12 +68,12 @@ export const Create: React.FC = () => {
   const [storyMode, setStoryMode] = useState<StoryMode>("new");
   const [theme, setTheme] = useState("friendly dragon");
   const [error, setError] = useState<string | null>(null);
-  const [coverImage, setCoverImage] = useState<string | null>(null);
   const [createdStory, setCreatedStory] = useState<GeneratedStory | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [memory, setMemory] = useState<MemoryContext | null>(null);
   const [characters, setCharacters] = useState<{ name: string; description: string | null }[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
+  const [sceneSlots, setSceneSlots] = useState<SceneSlot[]>([]);
 
   useEffect(() => {
     if (!activeChild) return;
@@ -85,18 +85,28 @@ export const Create: React.FC = () => {
     if (createState === "done") {
       const target = createdId ?? (createdStory ? createdStory.id : null);
       if (target) {
-        const timer = setTimeout(() => navigate(`/player/${target}`), 1800);
+        const timer = setTimeout(() => {
+          navigate(`/player/${target}`, {
+            state: {
+              slots: sceneSlots,
+              paragraphCount: createdStory?.text.length ?? 0,
+              childName: activeChild?.name ?? "",
+              storyTitle: createdStory?.title ?? "",
+              theme,
+            },
+          });
+        }, 1800);
         return () => clearTimeout(timer);
       }
     }
-  }, [createState, createdStory, createdId, navigate]);
+  }, [createState, createdStory, createdId, navigate, sceneSlots, activeChild, profile]);
 
   const handleGenerate = async () => {
     if (!activeChild) return;
     setError(null);
-    setCoverImage(null);
     setCreatedStory(null);
     setCreatedId(null);
+    setSceneSlots([]);
 
     try {
       setCreateState("writing");
@@ -110,17 +120,20 @@ export const Create: React.FC = () => {
         },
       );
 
-      setCreateState("painting");
-      const image = await generateCoverImage(story.title, story.summary);
-      setCoverImage(image);
+      // Build scene generation config (instant, local)
+      const topChars = await getTopCharacters(activeChild.id, 3).catch(() => []);
+      const styleCtx = buildStyleContext(story.title, story.summary, topChars);
+      const slots = buildScenePrompts(story.text, styleCtx);
+      setSceneSlots(slots);
 
+      // Save story text immediately — no images yet
       const saved: GeneratedStory = {
         id: String(Date.now()),
         title: story.title,
         summary: story.summary,
         text: story.text,
-        coverImage: image,
-        images: [image],
+        coverImage: "",
+        images: [],
         childName: activeChild.name,
         age: activeChild.age,
         theme,
@@ -128,6 +141,14 @@ export const Create: React.FC = () => {
       };
       await saveStory(saved);
       setCreatedStory(saved);
+
+      // Background: generate cover image for Library thumbnail (non-blocking)
+      if (profile?.plan !== "free") {
+        generateCoverImage(story.title, story.summary)
+          .then((url) => updateStoryCoverUrl(saved.id, url))
+          .catch(() => {});
+      }
+
       setCreateState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
@@ -389,8 +410,8 @@ export const Create: React.FC = () => {
           </div>
         )}
 
-        {(createState === "writing" || createState === "painting") && (
-          <GenerationProgress phase={createState} coverImage={coverImage} />
+        {createState === "writing" && (
+          <GenerationProgress phase="writing" coverImage={null} childName={activeChild?.name} />
         )}
 
         {createState === "done" && (
