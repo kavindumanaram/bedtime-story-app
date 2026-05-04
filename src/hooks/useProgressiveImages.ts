@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { generateSceneImage } from "../api/openaiApi";
+import { getFallbackImage } from "../api/sceneImageApi";
 import type { SceneSlot } from "../api/sceneImageApi";
 import { updateStoryImages } from "../api/storyDb";
 import { supabase } from "../lib/supabase";
@@ -8,6 +9,8 @@ type Options = {
   slots: SceneSlot[];
   paragraphCount: number;
   storyId: string | null;
+  /** Story theme — used to pick a themed gradient fallback when image generation fails. */
+  theme?: string;
 };
 
 type Return = {
@@ -43,6 +46,7 @@ export function useProgressiveImages({
   slots,
   paragraphCount,
   storyId,
+  theme,
 }: Options): Return {
   const [images, setImages] = useState<(string | null)[]>(() =>
     slots.length > 0 ? Array(paragraphCount).fill(null) : [],
@@ -78,6 +82,21 @@ export function useProgressiveImages({
           }
         } catch (err) {
           console.warn(`Scene ${slot.sceneIndex} image failed:`, err);
+          // Resolve with a themed gradient so the player never waits forever on a null slot
+          const fallbackUrl = getFallbackImage(theme);
+          if (abortedRef.current) break;
+          setImages((prev) => {
+            const next = [...prev];
+            const nextSlot = slots.find((s) => s.imageIndex === slot.imageIndex + 1);
+            const endIndex = nextSlot ? nextSlot.sceneIndex : paragraphCount;
+            for (let i = slot.sceneIndex; i < endIndex; i++) {
+              if (i < next.length) next[i] = fallbackUrl;
+            }
+            return next;
+          });
+          if (storyId) {
+            updateStoryImages(storyId, slot.imageIndex, fallbackUrl).catch(() => {});
+          }
         }
       }
     })();
@@ -85,7 +104,8 @@ export function useProgressiveImages({
     return () => {
       abortedRef.current = true;
     };
-  }, [slots, storyId, paragraphCount]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots, storyId, paragraphCount, theme]);
 
   const readyCount = images.filter(Boolean).length;
   const allDone = slots.length > 0 && readyCount >= slots.length;

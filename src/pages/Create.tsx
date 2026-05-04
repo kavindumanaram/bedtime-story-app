@@ -17,7 +17,7 @@ import { saveStory, updateStoryCoverUrl, type GeneratedStory } from "../api/stor
 import { triggerContinuation } from "../api/storyContinuation";
 import { getMemoryContext, getTopCharacters } from "../api/storyMemory";
 import { PlanLimitError } from "../api/dailyStory";
-import { buildStyleContext, buildScenePrompts, type SceneSlot } from "../api/sceneImageApi";
+import { buildStyleContext, buildScenePrompts, getFallbackImage, type SceneSlot } from "../api/sceneImageApi";
 import { useAuth } from "../contexts/AuthContext";
 import type { MemoryContext } from "../api/storyMemory";
 import { GenerationProgress } from "../components/GenerationProgress";
@@ -142,11 +142,14 @@ export const Create: React.FC = () => {
       await saveStory(saved);
       setCreatedStory(saved);
 
-      // Background: generate cover image for Library thumbnail (non-blocking)
+      // Background: generate cover image for Library thumbnail (non-blocking).
+      // On any failure (moderation_blocked, network, etc.) fall back to a themed gradient.
       if (profile?.plan !== "free") {
         generateCoverImage(story.title, story.summary)
           .then((url) => updateStoryCoverUrl(saved.id, url))
-          .catch(() => {});
+          .catch(() => {
+            updateStoryCoverUrl(saved.id, getFallbackImage(theme)).catch(() => {});
+          });
       }
 
       setCreateState("done");

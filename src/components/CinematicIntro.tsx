@@ -72,16 +72,20 @@ export const CinematicIntro: React.FC<Props> = ({
   const [messageIdx, setMessageIdx] = useState(0);
   const [particles, setParticles]   = useState<Particle[]>([]);
 
-  const leavingRef      = useRef(false);
-  const canDismissRef   = useRef(minDuration === 0);
-  const pendingRef      = useRef(false);
+  const leavingRef          = useRef(false);
+  const canDismissRef       = useRef(minDuration === 0);
+  const pendingRef          = useRef(false);
+  const enteredFullscreenRef = useRef(false);
 
   const dismiss = () => {
     if (leavingRef.current) return;
     leavingRef.current = true;
     setLeaving(true);
-    // Exit any document-level fullscreen so the player shows in normal mode
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    // Only exit fullscreen if WE entered it — avoids disrupting the player's own fullscreen state
+    if (enteredFullscreenRef.current && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+      enteredFullscreenRef.current = false;
+    }
     setTimeout(onDone, 500);
   };
 
@@ -138,9 +142,11 @@ export const CinematicIntro: React.FC<Props> = ({
     if (canDismiss && pendingRef.current) dismiss();
   }, [canDismiss]);
 
-  // Fullscreen on mount
+  // Fullscreen on mount — track whether WE entered it so dismiss can exit it selectively
   useEffect(() => {
-    if (enterFullscreen) document.documentElement.requestFullscreen?.().catch(() => {});
+    if (!enterFullscreen) return;
+    const p = document.documentElement.requestFullscreen?.();
+    if (p) p.then(() => { enteredFullscreenRef.current = true; }).catch(() => {});
   }, []);
 
   // Rotate magic messages every 4 s

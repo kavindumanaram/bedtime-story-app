@@ -82,6 +82,15 @@ export const Player: React.FC = () => {
   const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const ttsStartTimeRef = useRef<number | null>(null);
   const ttsEstDurationRef = useRef(0);
+  // Refs for auto-advance — kept current via effects so async TTS callbacks never see stale values
+  const textPageRef = useRef(0);
+  const narratableTextRef = useRef<string[]>([]);
+  const speakRef = useRef<((text: string) => void) | null>(null);
+  const progressiveImagesRef = useRef<(string | null)[]>([]);
+  // Prevents the auto-start effect from firing a second time after manual play or image arrival
+  const narrationStartedRef = useRef(false);
+  // When TTS ends but next image is still loading, store the target page here
+  const pendingAdvanceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!id) { setIsLoading(false); return; }
@@ -119,6 +128,7 @@ export const Player: React.FC = () => {
     slots: sceneSlots,
     paragraphCount: routerState.paragraphCount ?? paragraphs.length,
     storyId: id ?? null,
+    theme: routerState.theme,
   });
 
   // Intro gating: keep prep/intro screens until MIN_READY_IMAGES are loaded
@@ -144,14 +154,36 @@ export const Player: React.FC = () => {
     }
   }, [isLoading, isNewStory]);
 
-  // New stories: auto-start narration when ritual completes
+  // Auto-start narration when player phase begins — gated on first scene image being ready
+  // so the story never reads aloud over a blank shimmer screen.
   useEffect(() => {
-    if (ritualPhase === "player" && isNewStory && narratableText.length > 0) {
-      setTimeout(() => speakParagraph(narratableText[textPage]), 350);
-    }
-  // speakParagraph is stable (refs only); paragraphs won't change after load
+    if (ritualPhase !== "player" || !isNewStory || narratableText.length === 0) return;
+    if (narrationStartedRef.current) return;
+    // For progressive stories, wait until the first image is in state; non-progressive → start immediately
+    const firstReady = sceneSlots.length === 0 || (progressiveImages.length > 0 && progressiveImages[0] !== null);
+    if (!firstReady) return;
+    narrationStartedRef.current = true;
+    setTimeout(() => speakRef.current?.(narratableTextRef.current[0] ?? ''), 350);
+  // progressiveImages re-triggers this check whenever a new image arrives
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ritualPhase]);
+  }, [ritualPhase, progressiveImages]);
+
+  // When an image arrives for a page we were waiting on, advance and continue narrating
+  useEffect(() => {
+    const pending = pendingAdvanceRef.current;
+    if (pending === null) return;
+    if (progressiveImages.length <= pending || progressiveImages[pending] === null) return;
+    pendingAdvanceRef.current = null;
+    const allText = narratableTextRef.current;
+    setTextPage(pending);
+    setTimeout(() => {
+      if (textPageRef.current === pending) {
+        const text = allText[pending];
+        if (text) speakRef.current?.(text);
+      }
+    }, 700);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressiveImages]);
 
   // Auto-hide play prompt after 5 s
   useEffect(() => {
@@ -183,6 +215,7 @@ export const Player: React.FC = () => {
   };
 
   const speakParagraph = (text: string) => {
+    narrationStartedRef.current = true;  // prevent auto-start effect from double-firing
     if (!("speechSynthesis" in window)) return;
     stopTTS();
     const utter = new SpeechSynthesisUtterance(text);
@@ -190,7 +223,32 @@ export const Player: React.FC = () => {
     utter.lang = "en-US";
     if (ttsVoiceRef.current) utter.voice = ttsVoiceRef.current;
     utter.onstart = () => setIsTTSLoading(false);
-    utter.onend = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
+    utter.onend = () => {
+      setIsTTSPlaying(false);
+      setIsTTSLoading(false);
+      setTtsProgress(0);
+      const current = textPageRef.current;
+      const allText = narratableTextRef.current;
+      if (current < allText.length - 1) {
+        const next = current + 1;
+        // Only advance if the next image has arrived; otherwise park in pendingAdvanceRef
+        // and the useEffect([progressiveImages]) will pick it up when the image lands.
+        const hasProgressive = sceneSlots.length > 0;
+        const imgs = progressiveImagesRef.current;
+        const nextReady = !hasProgressive || (imgs.length > next && imgs[next] !== null);
+        if (nextReady) {
+          setTextPage(next);
+          setTimeout(() => {
+            if (textPageRef.current === next) {
+              const nextText = allText[next];
+              if (nextText) speakRef.current?.(nextText);
+            }
+          }, 700);
+        } else {
+          pendingAdvanceRef.current = next;
+        }
+      }
+    };
     utter.onerror = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
     ttsRef.current = utter;
     ttsStartTimeRef.current = Date.now();
@@ -199,6 +257,8 @@ export const Player: React.FC = () => {
     setIsTTSPlaying(true);
     setIsTTSLoading(true);
   };
+  // Keep speakRef current so onend callbacks always call the latest version
+  speakRef.current = speakParagraph;
 
   // Progress bar ticker
   useEffect(() => {
@@ -213,6 +273,11 @@ export const Player: React.FC = () => {
 
   useEffect(() => { stopTTS(); }, [textPage]);
   useEffect(() => { return () => stopTTS(); }, []);
+
+  // Keep async-callback refs current after every render
+  useEffect(() => { textPageRef.current = textPage; });
+  useEffect(() => { narratableTextRef.current = narratableText; });
+  useEffect(() => { progressiveImagesRef.current = progressiveImages; });
 
   const hasParagraphs = narratableText.length > 0;
   const isLastPage = hasParagraphs && textPage === narratableText.length - 1;
@@ -347,14 +412,13 @@ export const Player: React.FC = () => {
         />
       )}
 
-      {/* Brief cinematic intro for revisited stories */}
+      {/* Brief cinematic intro for revisited stories — no fullscreen so player state is unchanged */}
       {showOldIntro && (
         <CinematicIntro
           childName={activeChild?.name ?? ""}
           storyTitle={currentStory.title}
           duration={5000}
           minDuration={0}
-          enterFullscreen
           onDone={() => { setShowOldIntro(false); setShowPlayPrompt(true); }}
         />
       )}
@@ -388,8 +452,8 @@ export const Player: React.FC = () => {
             <LargeStoryPlayer
               pages={carouselPages}
               subtitles={narratableText}
-              initialIndex={textPage}
-              onPageChange={setTextPage}
+              pageIndex={textPage}
+              onPageChange={(idx) => { pendingAdvanceRef.current = null; setTextPage(idx); }}
               storyId={currentStory.id}
               isDimmed={isDimmed}
               onToggleDim={() => setIsDimmed((d) => !d)}

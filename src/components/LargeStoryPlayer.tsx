@@ -28,6 +28,12 @@ type Props = {
    * Pass 0 (default) to disable the guard entirely.
    */
   nextPageGuardCount?: number;
+  /**
+   * Controlled page index. When set, the player syncs to this value whenever
+   * it changes (e.g. for TTS auto-advance driven externally by Player.tsx).
+   * User-initiated navigation still works normally and fires onPageChange.
+   */
+  pageIndex?: number;
 };
 
 const TINTS = [
@@ -56,6 +62,7 @@ export default function LargeStoryPlayer({
   onToggleDim,
   onSettingsClick,
   nextPageGuardCount = 0,
+  pageIndex,
 }: Props) {
   const [index, setIndex] = useState(initialIndex);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -107,6 +114,18 @@ export default function LargeStoryPlayer({
     document.addEventListener("fullscreenchange", onFull);
     return () => document.removeEventListener("fullscreenchange", onFull);
   }, []);
+
+  // Sync externally-controlled page index (e.g. TTS auto-advance from Player.tsx).
+  // Intentionally excludes `index` from deps — we only want to react to prop changes,
+  // not re-fire when internal navigation updates index.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (pageIndex === undefined || pageIndex === index) return;
+    setDirection(pageIndex > index ? "right" : "left");
+    setIndex(pageIndex);
+    setTextKey((k) => k + 1);
+    // Don't call onPageChange here — this is externally driven, not user-initiated
+  }, [pageIndex]);
 
   // Page transition trigger
   useEffect(() => {
