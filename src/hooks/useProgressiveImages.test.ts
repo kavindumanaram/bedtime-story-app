@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { generateSceneImageOnce } from "./useProgressiveImages";
 
 /**
  * Pure-logic tests for the readyCount / images-array behaviour that
@@ -113,5 +114,75 @@ describe("nextPageGuardCount navigation restriction", () => {
   it("last page always disables Next regardless of guard", () => {
     const allLoaded: (string | null)[] = ["url0", "url1", "url2"];
     expect(isNextDisabled(2, allLoaded)).toBe(true); // last page
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug regression: StrictMode double-mount caused slot[0] to be permanently null
+// ---------------------------------------------------------------------------
+
+vi.mock("../api/openaiApi", () => ({
+  generateSceneImage: vi.fn(),
+}));
+
+describe("generateSceneImageOnce deduplication (Bug: stuck images in StrictMode)", () => {
+  let generateSceneImage: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    // Re-import to get the mocked version
+    const mod = await import("../api/openaiApi");
+    generateSceneImage = mod.generateSceneImage as ReturnType<typeof vi.fn>;
+    generateSceneImage.mockReset();
+  });
+
+  it("returns the same Promise for concurrent calls with the same prompt", async () => {
+    let resolve!: (url: string) => void;
+    const deferred = new Promise<string>((r) => { resolve = r; });
+    generateSceneImage.mockReturnValueOnce(deferred);
+
+    const p1 = generateSceneImageOnce("prompt-a");
+    const p2 = generateSceneImageOnce("prompt-a");
+
+    // Both calls must reference the same Promise — no duplicate network request
+    expect(p1).toBe(p2);
+    expect(generateSceneImage).toHaveBeenCalledTimes(1);
+
+    resolve("url-a");
+    expect(await p1).toBe("url-a");
+    expect(await p2).toBe("url-a");
+  });
+
+  it("fires separate requests for different prompts", async () => {
+    generateSceneImage.mockResolvedValueOnce("url-a").mockResolvedValueOnce("url-b");
+
+    const p1 = generateSceneImageOnce("prompt-a");
+    const p2 = generateSceneImageOnce("prompt-b");
+
+    expect(p1).not.toBe(p2);
+    expect(generateSceneImage).toHaveBeenCalledTimes(2);
+    expect(await p1).toBe("url-a");
+    expect(await p2).toBe("url-b");
+  });
+
+  it("slot[0] is correctly applied even when a second loop skips calling generateSceneImage", () => {
+    // Simulates what happens in StrictMode: Loop 1 is aborted but Loop 2 shares
+    // the same Promise. The fill logic must still populate slot[0]'s scene range.
+    const slots = [
+      { imageIndex: 0, sceneIndex: 0 },
+      { imageIndex: 1, sceneIndex: 2 },
+      { imageIndex: 2, sceneIndex: 4 },
+    ];
+    const paragraphCount = 6;
+
+    // Apply slot[0] result (as Loop 2 would after sharing Loop 1's Promise)
+    const images = applySlotToImages(
+      Array<string | null>(paragraphCount).fill(null),
+      0, 0, slots, paragraphCount, "url-from-dedup",
+    );
+
+    expect(images[0]).toBe("url-from-dedup");
+    expect(images[1]).toBe("url-from-dedup");
+    expect(images[2]).toBeNull(); // slot[1] not yet resolved
+    expect(readyCount(images)).toBe(2);
   });
 });

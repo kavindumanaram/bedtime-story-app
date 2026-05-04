@@ -18,6 +18,7 @@ import { triggerContinuation } from "../api/storyContinuation";
 import { getMemoryContext, getTopCharacters } from "../api/storyMemory";
 import { PlanLimitError } from "../api/dailyStory";
 import { buildStyleContext, buildScenePrompts, getFallbackImage, type SceneSlot } from "../api/sceneImageApi";
+import { getDevSettings } from "../lib/devSettings";
 import { useAuth } from "../contexts/AuthContext";
 import type { MemoryContext } from "../api/storyMemory";
 import { GenerationProgress } from "../components/GenerationProgress";
@@ -123,7 +124,8 @@ export const Create: React.FC = () => {
       // Build scene generation config (instant, local)
       const topChars = await getTopCharacters(activeChild.id, 3).catch(() => []);
       const styleCtx = buildStyleContext(story.title, story.summary, topChars);
-      const slots = buildScenePrompts(story.text, styleCtx);
+      const { imagesPerStory } = getDevSettings();
+      const slots = buildScenePrompts(story.text, styleCtx, imagesPerStory);
       setSceneSlots(slots);
 
       // Save story text immediately — no images yet

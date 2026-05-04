@@ -20,6 +20,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useProgressiveImages } from "../hooks/useProgressiveImages";
 import type { SceneSlot } from "../api/sceneImageApi";
 import type { FeedbackReaction } from "../lib/supabase";
+import { getDevSettings } from "../lib/devSettings";
 
 const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
   { reaction: "loved",          icon: Heart,          label: "Loved it" },
@@ -46,6 +47,7 @@ export const Player: React.FC = () => {
   const { activeChild, profile } = useAuth();
 
   const routerState = (location.state ?? {}) as RouterState;
+  const devSettings = getDevSettings();
 
   const knownMock = stories.find((s) => s.id === id);
   const [currentStory, setCurrentStory] = useState(knownMock ?? stories[0]);
@@ -56,7 +58,7 @@ export const Player: React.FC = () => {
   const [isDimmed, setIsDimmed] = useState(false);
   const isNewStory = !!(routerState.childName && routerState.storyTitle);
   const [ritualPhase, setRitualPhase] = useState<RitualPhase>(
-    isNewStory ? "preparation" : "player",
+    isNewStory && devSettings.cinematicIntroEnabled ? "preparation" : "player",
   );
   const [showOldIntro, setShowOldIntro] = useState(false);
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -147,16 +149,18 @@ export const Player: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Old stories: show brief CinematicIntro once loading finishes
+  // Old stories: show brief CinematicIntro once loading finishes (unless disabled in dev settings)
   useEffect(() => {
-    if (!isLoading && !isNewStory) {
+    if (!isLoading && !isNewStory && devSettings.cinematicIntroEnabled) {
       setShowOldIntro(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, isNewStory]);
 
   // Auto-start narration when player phase begins — gated on first scene image being ready
   // so the story never reads aloud over a blank shimmer screen.
   useEffect(() => {
+    if (!devSettings.autoplayEnabled) return;
     if (ritualPhase !== "player" || !isNewStory || narratableText.length === 0) return;
     if (narrationStartedRef.current) return;
     // For progressive stories, wait until the first image is in state; non-progressive → start immediately
@@ -229,7 +233,7 @@ export const Player: React.FC = () => {
       setTtsProgress(0);
       const current = textPageRef.current;
       const allText = narratableTextRef.current;
-      if (current < allText.length - 1) {
+      if (devSettings.autoplayEnabled && current < allText.length - 1) {
         const next = current + 1;
         // Only advance if the next image has arrived; otherwise park in pendingAdvanceRef
         // and the useEffect([progressiveImages]) will pick it up when the image lands.

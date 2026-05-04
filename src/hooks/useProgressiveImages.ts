@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { generateSceneImage } from "../api/openaiApi";
 import { getFallbackImage } from "../api/sceneImageApi";
 import type { SceneSlot } from "../api/sceneImageApi";
@@ -42,6 +42,31 @@ async function savePartialImageUrls(
     .eq("id", storyId);
 }
 
+/**
+ * Module-level deduplication map: prompt → in-flight Promise.
+ *
+ * This solves the React StrictMode double-mount problem where:
+ * 1. Mount 1 starts the async loop, adds slot[0] to inFlightRef, fires the fetch
+ * 2. StrictMode cleanup runs (aborted₁=true) — but the fetch is already in-flight
+ * 3. Mount 2 starts a new loop — it would skip slot[0] if inFlightRef was the guard,
+ *    leaving it permanently null (loading spinner forever)
+ *
+ * With deduplication, both loops share the same Promise for slot[0]:
+ * - Loop 1 creates the Promise and the network request
+ * - Loop 2 finds the existing Promise and waits on it
+ * - Loop 1's result is discarded (aborted), Loop 2 updates state correctly
+ * - Exactly ONE network request per slot, zero stuck images
+ */
+const pendingGenerations = new Map<string, Promise<string>>();
+
+export function generateSceneImageOnce(prompt: string): Promise<string> {
+  const existing = pendingGenerations.get(prompt);
+  if (existing) return existing;
+  const p = generateSceneImage(prompt).finally(() => pendingGenerations.delete(prompt));
+  pendingGenerations.set(prompt, p);
+  return p;
+}
+
 export function useProgressiveImages({
   slots,
   paragraphCount,
@@ -51,18 +76,24 @@ export function useProgressiveImages({
   const [images, setImages] = useState<(string | null)[]>(() =>
     slots.length > 0 ? Array(paragraphCount).fill(null) : [],
   );
-  const abortedRef = useRef(false);
 
   useEffect(() => {
     if (slots.length === 0) return;
-    abortedRef.current = false;
+
+    // Local flag — each effect invocation gets its own abort state.
+    // A shared useRef would be reset by the second StrictMode mount before the first
+    // loop checks it, causing both loops to run to completion (double generation).
+    let aborted = false;
 
     void (async () => {
       for (const slot of slots) {
-        if (abortedRef.current) break;
+        if (aborted) break;
+
         try {
-          const url = await generateSceneImage(slot.prompt);
-          if (abortedRef.current) break;
+          // generateSceneImageOnce deduplicates concurrent requests for the same prompt
+          // so StrictMode's second mount reuses the first mount's in-flight Promise
+          const url = await generateSceneImageOnce(slot.prompt);
+          if (aborted) break;
 
           setImages((prev) => {
             const next = [...prev];
@@ -84,7 +115,7 @@ export function useProgressiveImages({
           console.warn(`Scene ${slot.sceneIndex} image failed:`, err);
           // Resolve with a themed gradient so the player never waits forever on a null slot
           const fallbackUrl = getFallbackImage(theme);
-          if (abortedRef.current) break;
+          if (aborted) break;
           setImages((prev) => {
             const next = [...prev];
             const nextSlot = slots.find((s) => s.imageIndex === slot.imageIndex + 1);
@@ -102,7 +133,7 @@ export function useProgressiveImages({
     })();
 
     return () => {
-      abortedRef.current = true;
+      aborted = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slots, storyId, paragraphCount, theme]);

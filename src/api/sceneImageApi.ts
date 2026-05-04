@@ -79,11 +79,11 @@ export function buildStyleContext(
 export function buildScenePrompts(
   paragraphs: string[],
   styleContext: StyleContext,
+  maxImages = 5,
 ): SceneSlot[] {
   if (paragraphs.length === 0) return [];
 
-  const MAX_IMAGES = 5;
-  const imageCount = Math.min(paragraphs.length, MAX_IMAGES);
+  const imageCount = Math.min(paragraphs.length, maxImages);
 
   const rawIndices: number[] = [];
   for (let i = 0; i < imageCount; i++) {

@@ -76,6 +76,10 @@ export default function LargeStoryPlayer({
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether THIS component entered fullscreen — so cleanup only exits
+  // fullscreen if we own it, not when another component (or StrictMode re-mount)
+  // triggers an unmount while some other element is fullscreen.
+  const enteredFullscreenRef = useRef(false);
   const lastParallaxTime = useRef(0);
   const ambientAudio = useAmbientAudio();
 
@@ -108,9 +112,14 @@ export default function LargeStoryPlayer({
   const subtitle = subtitles[index] ?? "";
   const tintEffect = TINTS[index % TINTS.length];
 
-  // Fullscreen listener — only true when THIS container is the fullscreen element
+  // Fullscreen listener — only true when THIS container is the fullscreen element.
+  // Also resets enteredFullscreenRef if the user exits fullscreen externally (Esc key).
   useEffect(() => {
-    const onFull = () => setIsFullscreen(document.fullscreenElement === containerRef.current);
+    const onFull = () => {
+      const isNowFS = document.fullscreenElement === containerRef.current;
+      setIsFullscreen(isNowFS);
+      if (!isNowFS) enteredFullscreenRef.current = false;
+    };
     document.addEventListener("fullscreenchange", onFull);
     return () => document.removeEventListener("fullscreenchange", onFull);
   }, []);
@@ -134,10 +143,13 @@ export default function LargeStoryPlayer({
     return () => clearTimeout(timer);
   }, [index]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — only exit fullscreen if WE entered it, so intro overlays
+  // and StrictMode re-mounts don't steal or exit another component's fullscreen session.
   useEffect(() => {
     return () => {
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (enteredFullscreenRef.current && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -194,9 +206,13 @@ export default function LargeStoryPlayer({
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
     try {
-      if (!document.fullscreenElement)
+      if (!document.fullscreenElement) {
         await (containerRef.current as HTMLElement).requestFullscreen();
-      else await document.exitFullscreen();
+        enteredFullscreenRef.current = true;
+      } else {
+        await document.exitFullscreen();
+        enteredFullscreenRef.current = false;
+      }
     } catch (_) { /* ignore */ }
   };
 
