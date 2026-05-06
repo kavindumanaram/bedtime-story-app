@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import type { StoryCharacter } from "./sceneImageApi";
 
 export type GeneratedStory = {
   id: string;
@@ -6,11 +7,12 @@ export type GeneratedStory = {
   summary: string;
   text: string[];
   coverImage: string;
-  images?: string[];   // future: 4 AI-generated images; currently [coverImage]
+  images?: string[];
   childName: string;
   age: number;
   theme: string;
   createdAt: string;
+  characterContext?: StoryCharacter[];
 };
 
 type DbSchema = { stories: GeneratedStory[] };
@@ -59,6 +61,22 @@ export async function updateStoryCoverUrl(id: string, url: string): Promise<void
   }
   // Also push to Supabase best-effort
   void (async () => { await supabase.from("stories").update({ cover_url: url }).eq("id", id); })();
+}
+
+export async function updateStoryCharacterContext(
+  id: string,
+  characters: StoryCharacter[],
+): Promise<void> {
+  const db = await readDb();
+  const idx = db.stories.findIndex((s) => s.id === id);
+  if (idx >= 0) {
+    db.stories[idx] = { ...db.stories[idx], characterContext: characters };
+    await writeDb(db);
+  }
+  // Best-effort Supabase save — requires character_context JSONB column (migration 20260503)
+  void (async () => {
+    await supabase.from("stories").update({ character_context: characters }).eq("id", id);
+  })();
 }
 
 export async function updateStoryImages(

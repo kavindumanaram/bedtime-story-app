@@ -56,6 +56,167 @@ export type StyleContext = {
   characterDescriptions: string;
 };
 
+// --- Visual identity lock ---------------------------------------------------
+
+export const LOCKED_ART_STYLE =
+  "Pixar-style cinematic children's illustration, warm volumetric lighting, " +
+  "storybook composition, highly detailed, consistent character design, " +
+  "cinematic framing, medium shot, eye-level camera, no text, safe for children";
+
+// --- Consistent image context types -------------------------------------------
+
+export type StoryCharacter = {
+  name: string;
+  type?: "human" | "animal" | "creature";
+  gender?: string;       // "boy" | "girl" | "man" | "woman"
+  age?: string;          // "7-year-old" | "young" | "elderly"
+  skinColor?: string;    // humans only
+  hairColor?: string;    // humans only
+  hairStyle?: string;    // humans only
+  visualDescription: string;
+  clothing?: string;
+  accessories?: string;
+  species?: string;      // animals/creatures only
+};
+
+export type StoryContext = {
+  setting: string;
+  environmentStyle: string;
+  mainCharacter: string;
+  characters: StoryCharacter[];
+  referenceImageUrl?: string;
+};
+
+function detectSetting(title: string, summary: string): string {
+  const text = `${title} ${summary}`.toLowerCase();
+  if (/space|star|planet|galaxy|rocket/.test(text)) return "outer space, stars and planets";
+  if (/ocean|sea|underwater|coral/.test(text)) return "underwater ocean world";
+  if (/forest|jungle|tree|wood/.test(text)) return "enchanted forest";
+  if (/castle|kingdom|palace|royal/.test(text)) return "magical kingdom";
+  if (/mountain|cave|valley|cliff/.test(text)) return "mountain wilderness";
+  if (/farm|barn|field|meadow/.test(text)) return "peaceful countryside";
+  if (/city|town|village|street/.test(text)) return "cozy village";
+  return "magical storybook world";
+}
+
+function detectEnvironmentStyle(title: string, summary: string): string {
+  const text = `${title} ${summary}`.toLowerCase();
+  if (/space|star|planet|galaxy|rocket/.test(text)) return "outer space with twinkling stars and glowing nebulae";
+  if (/ocean|sea|underwater|coral/.test(text)) return "shimmering underwater ocean world with coral reefs and colourful fish";
+  if (/forest|jungle|tree|wood/.test(text)) return "enchanted forest with glowing trees and soft magical light filtering through the leaves";
+  if (/castle|kingdom|palace|royal/.test(text)) return "magical kingdom with towering castles, golden spires, and colourful banners";
+  if (/mountain|cave|valley|cliff/.test(text)) return "misty mountain wilderness with ancient stone paths and sweeping valley views";
+  if (/farm|barn|field|meadow/.test(text)) return "peaceful countryside with rolling green meadows and warm golden sunlight";
+  if (/city|town|village|street/.test(text)) return "cozy storybook village with warm lantern-lit cobblestone streets";
+  return "magical storybook world bathed in warm golden light with soft glowing details";
+}
+
+function extractCharacterTraits(name: string, paragraphs: string[]): string {
+  const text = paragraphs.slice(0, 3).join(" ");
+  const patterns = [
+    new RegExp(`${name}[,\\s]+(?:a|an|the)?\\s*([^.]{5,80}?)(?:\\.|,|\\s+(?:and|who|when))`, "i"),
+    new RegExp(`${name}\\s+(?:had|has|wore|wears|with)\\s+([^.]{5,80}?)(?:\\.|,)`, "i"),
+  ];
+  for (const pat of patterns) {
+    const m = text.match(pat);
+    if (m) return m[1].trim().slice(0, 80);
+  }
+  return "";
+}
+
+export function buildReferenceImagePrompt(ctx: StoryContext): string {
+  const charLines = ctx.characters.length > 0
+    ? ctx.characters.map((c) => {
+        const parts: string[] = [`${c.name}:`];
+        if (c.gender) parts.push(c.gender);
+        if (c.age) parts.push(c.age);
+        if (c.species) parts.push(`(${c.species})`);
+        if (c.skinColor) parts.push(`${c.skinColor} skin`);
+        const hair = [c.hairStyle, c.hairColor].filter(Boolean).join(" ");
+        if (hair) parts.push(`${hair} hair`);
+        parts.push(c.visualDescription);
+        if (c.clothing) parts.push(`wearing ${c.clothing}`);
+        if (c.accessories) parts.push(`with ${c.accessories}`);
+        return parts.join(", ");
+      }).join(". ")
+    : `Main character: ${ctx.mainCharacter}`;
+
+  return (
+    `Character reference sheet. ${charLines}. ` +
+    `Environment style: ${ctx.environmentStyle}. ` +
+    `${LOCKED_ART_STYLE}. ` +
+    `Neutral background, all characters front-facing, full body visible, clear consistent character design.`
+  );
+}
+
+export function buildStoryContext(
+  title: string,
+  summary: string,
+  paragraphs: string[],
+  recurringChars: { name: string; description: string | null }[] = [],
+  extractedCharacters?: StoryCharacter[],
+): StoryContext {
+  const setting = detectSetting(title, summary);
+  const environmentStyle = detectEnvironmentStyle(title, summary);
+
+  const match = summary.match(/\b([A-Z][a-z]+(?:\s+the\s+[A-Z][a-z]+)?)\b/);
+  const mainCharacter = (extractedCharacters?.[0]?.name) ?? (match ? match[1] : "a young child");
+
+  // Prefer AI-extracted characters; fall back to regex-based extraction
+  if (extractedCharacters && extractedCharacters.length > 0) {
+    return { setting, environmentStyle, mainCharacter, characters: extractedCharacters };
+  }
+
+  const characters: StoryCharacter[] = [];
+  for (const rc of recurringChars) {
+    if (rc.description) characters.push({ name: rc.name, visualDescription: rc.description });
+  }
+
+  const mainInList = characters.some(
+    (c) => c.name.toLowerCase() === mainCharacter.toLowerCase(),
+  );
+  if (!mainInList && mainCharacter !== "a young child") {
+    const traits = extractCharacterTraits(mainCharacter, paragraphs);
+    if (traits) characters.push({ name: mainCharacter, visualDescription: traits });
+  }
+
+  return { setting, environmentStyle, mainCharacter, characters };
+}
+
+export function buildConsistentSceneSlots(
+  paragraphs: string[],
+  storyContext: StoryContext,
+  maxImages = 5,
+): SceneSlot[] {
+  if (paragraphs.length === 0) return [];
+
+  const imageCount = Math.min(paragraphs.length, maxImages);
+  const rawIndices: number[] = [];
+  for (let i = 0; i < imageCount; i++) {
+    rawIndices.push(Math.round((i / (imageCount - 1 || 1)) * (paragraphs.length - 1)));
+  }
+  const uniqueIndices = [...new Set(rawIndices)];
+
+  const charLock =
+    storyContext.characters.length > 0
+      ? storyContext.characters.map((c) => {
+          let desc = `${c.name}: ${c.visualDescription}`;
+          if (c.clothing) desc += `, ${c.clothing}`;
+          return desc;
+        }).join(". ") + "."
+      : `Main character: ${storyContext.mainCharacter}.`;
+
+  return uniqueIndices.map((sceneIndex, imageIndex) => {
+    const action = paragraphs[sceneIndex].split(/[.!?]/)[0].trim().slice(0, 200);
+
+    const prompt =
+      `${charLock} Environment: ${storyContext.environmentStyle}. ` +
+      `Scene: ${action}. Cinematic medium shot, eye-level, storybook framing. ${LOCKED_ART_STYLE}.`;
+
+    return { sceneIndex, imageIndex, prompt, status: "pending" as SceneImageStatus, url: null };
+  });
+}
+
 export function buildStyleContext(
   _title: string,
   summary: string,

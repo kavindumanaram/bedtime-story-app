@@ -18,7 +18,7 @@ import { updateStreak } from "../api/dailyStory";
 import { updateMemoryAfterRead, saveFeedback } from "../api/storyMemory";
 import { useAuth } from "../contexts/AuthContext";
 import { useProgressiveImages } from "../hooks/useProgressiveImages";
-import type { SceneSlot } from "../api/sceneImageApi";
+import type { SceneSlot, StoryContext } from "../api/sceneImageApi";
 import type { FeedbackReaction } from "../lib/supabase";
 import { getDevSettings } from "../lib/devSettings";
 
@@ -34,6 +34,7 @@ type RitualPhase = "preparation" | "intro" | "player";
 
 type RouterState = {
   slots?: SceneSlot[];
+  storyContext?: StoryContext;
   paragraphCount?: number;
   childName?: string;
   storyTitle?: string;
@@ -131,6 +132,7 @@ export const Player: React.FC = () => {
     paragraphCount: routerState.paragraphCount ?? paragraphs.length,
     storyId: id ?? null,
     theme: routerState.theme,
+    storyContext: routerState.storyContext,
   });
 
   // Intro gating: keep prep/intro screens until MIN_READY_IMAGES are loaded

@@ -12,12 +12,12 @@ import {
   ArrowRight,
   Star,
 } from "lucide-react";
-import { generateStory, generateCoverImage } from "../api/openaiApi";
-import { saveStory, updateStoryCoverUrl, type GeneratedStory } from "../api/storyDb";
+import { generateStory, generateCoverImage, extractStoryCharacters } from "../api/openaiApi";
+import { saveStory, updateStoryCoverUrl, updateStoryCharacterContext, type GeneratedStory } from "../api/storyDb";
 import { triggerContinuation } from "../api/storyContinuation";
 import { getMemoryContext, getTopCharacters } from "../api/storyMemory";
 import { PlanLimitError } from "../api/dailyStory";
-import { buildStyleContext, buildScenePrompts, getFallbackImage, type SceneSlot } from "../api/sceneImageApi";
+import { buildStoryContext, buildConsistentSceneSlots, getFallbackImage, type SceneSlot, type StoryContext } from "../api/sceneImageApi";
 import { getDevSettings } from "../lib/devSettings";
 import { useAuth } from "../contexts/AuthContext";
 import type { MemoryContext } from "../api/storyMemory";
@@ -75,6 +75,7 @@ export const Create: React.FC = () => {
   const [characters, setCharacters] = useState<{ name: string; description: string | null }[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [sceneSlots, setSceneSlots] = useState<SceneSlot[]>([]);
+  const [storyCtx, setStoryCtx] = useState<StoryContext | null>(null);
 
   useEffect(() => {
     if (!activeChild) return;
@@ -90,6 +91,7 @@ export const Create: React.FC = () => {
           navigate(`/player/${target}`, {
             state: {
               slots: sceneSlots,
+              storyContext: storyCtx ?? undefined,
               paragraphCount: createdStory?.text.length ?? 0,
               childName: activeChild?.name ?? "",
               storyTitle: createdStory?.title ?? "",
@@ -100,7 +102,7 @@ export const Create: React.FC = () => {
         return () => clearTimeout(timer);
       }
     }
-  }, [createState, createdStory, createdId, navigate, sceneSlots, activeChild, profile]);
+  }, [createState, createdStory, createdId, navigate, sceneSlots, storyCtx, activeChild, profile]);
 
   const handleGenerate = async () => {
     if (!activeChild) return;
@@ -108,6 +110,7 @@ export const Create: React.FC = () => {
     setCreatedStory(null);
     setCreatedId(null);
     setSceneSlots([]);
+    setStoryCtx(null);
 
     try {
       setCreateState("writing");
@@ -121,12 +124,16 @@ export const Create: React.FC = () => {
         },
       );
 
-      // Build scene generation config (instant, local)
-      const topChars = await getTopCharacters(activeChild.id, 3).catch(() => []);
-      const styleCtx = buildStyleContext(story.title, story.summary, topChars);
+      // Extract rich character context via AI, then build scene config
+      const [topChars, extractedChars] = await Promise.all([
+        getTopCharacters(activeChild.id, 3).catch(() => []),
+        extractStoryCharacters(story.title, story.text).catch(() => []),
+      ]);
+      const ctx = buildStoryContext(story.title, story.summary, story.text, topChars, extractedChars);
       const { imagesPerStory } = getDevSettings();
-      const slots = buildScenePrompts(story.text, styleCtx, imagesPerStory);
+      const slots = buildConsistentSceneSlots(story.text, ctx, imagesPerStory);
       setSceneSlots(slots);
+      setStoryCtx(ctx);
 
       // Save story text immediately — no images yet
       const saved: GeneratedStory = {
@@ -140,9 +147,15 @@ export const Create: React.FC = () => {
         age: activeChild.age,
         theme,
         createdAt: new Date().toISOString(),
+        characterContext: extractedChars.length > 0 ? extractedChars : undefined,
       };
       await saveStory(saved);
       setCreatedStory(saved);
+
+      // Best-effort: persist character context to Supabase for UUID-based stories
+      if (extractedChars.length > 0) {
+        updateStoryCharacterContext(saved.id, extractedChars).catch(() => {});
+      }
 
       // Background: generate cover image for Library thumbnail (non-blocking).
       // On any failure (moderation_blocked, network, etc.) fall back to a themed gradient.

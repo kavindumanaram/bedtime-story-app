@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { buildReferenceImagePrompt, type StoryContext, type StoryCharacter } from "./sceneImageApi";
 
 export type StoryContent = {
   title: string;
@@ -108,7 +109,36 @@ export async function generateCoverImage(title: string, summary: string): Promis
   return `data:image/png;base64,${b64}`;
 }
 
-export async function generateSceneImage(prompt: string): Promise<string> {
+export async function generateSceneImage(
+  prompt: string,
+  referenceImageUrl?: string,
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: config.openai.imageModel,
+    prompt,
+    size: config.openai.imageSize,
+    n: 1,
+  };
+  if (referenceImageUrl) {
+    body.image = referenceImageUrl;
+  }
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Scene image failed: ${res.statusText}`);
+  const data = await res.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("No image data returned");
+  return `data:image/png;base64,${b64}`;
+}
+
+export async function generateReferenceImage(ctx: StoryContext): Promise<string> {
+  const prompt = buildReferenceImagePrompt(ctx);
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
@@ -122,9 +152,64 @@ export async function generateSceneImage(prompt: string): Promise<string> {
       n: 1,
     }),
   });
-  if (!res.ok) throw new Error(`Scene image failed: ${res.statusText}`);
+  if (!res.ok) throw new Error(`Reference image failed: ${res.statusText}`);
   const data = await res.json();
   const b64 = data?.data?.[0]?.b64_json;
-  if (!b64) throw new Error("No image data returned");
+  if (!b64) throw new Error("No reference image data returned");
   return `data:image/png;base64,${b64}`;
+}
+
+export async function extractStoryCharacters(
+  title: string,
+  text: string[],
+): Promise<StoryCharacter[]> {
+  const storyText = text.join("\n\n");
+  const userPrompt =
+    `Story title: "${title}"\n\nStory text:\n${storyText}\n\n` +
+    `Extract ALL named characters. For each return:\n` +
+    `- name (string)\n` +
+    `- type: "human" | "animal" | "creature"\n` +
+    `- gender (humans only): "boy" | "girl" | "man" | "woman"\n` +
+    `- age: approximate e.g. "7-year-old", "young", "elderly" — infer if not stated\n` +
+    `- skinColor (humans only): e.g. "light brown", "dark", "pale"\n` +
+    `- hairColor (humans only): e.g. "black", "golden", "red"\n` +
+    `- hairStyle (humans only): e.g. "long curly", "short", "braided"\n` +
+    `- clothing: primary outfit e.g. "blue striped pyjamas, bare feet"\n` +
+    `- accessories: notable items e.g. "red collar", "wooden wand" (null if none)\n` +
+    `- species (animals/creatures only): e.g. "golden retriever", "purple dragon"\n` +
+    `- visualDescription: one sentence combining all visual details\n\n` +
+    `Skip unnamed groups. Infer reasonable visual defaults for details not in the text.\n` +
+    `Return JSON: { "characters": [ ... ] }`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.openai.chatModel,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a visual character designer for children's book illustrations. " +
+            "Extract character details from stories and return structured JSON only.",
+        },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Character extraction failed: ${res.statusText}`);
+  const data = await res.json();
+  try {
+    const parsed = JSON.parse(data.choices[0].message.content);
+    const chars = parsed?.characters;
+    if (!Array.isArray(chars)) return [];
+    return chars.filter((c: unknown) => typeof (c as StoryCharacter).name === "string") as StoryCharacter[];
+  } catch {
+    return [];
+  }
 }

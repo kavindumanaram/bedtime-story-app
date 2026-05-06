@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { generateSceneImage } from "../api/openaiApi";
-import { getFallbackImage } from "../api/sceneImageApi";
+import { generateSceneImage, generateReferenceImage } from "../api/openaiApi";
+import { getFallbackImage, buildReferenceImagePrompt, type StoryContext } from "../api/sceneImageApi";
 import type { SceneSlot } from "../api/sceneImageApi";
+import { uploadReferenceImage } from "../api/storageApi";
 import { updateStoryImages } from "../api/storyDb";
 import { supabase } from "../lib/supabase";
 
@@ -11,6 +12,8 @@ type Options = {
   storyId: string | null;
   /** Story theme — used to pick a themed gradient fallback when image generation fails. */
   theme?: string;
+  /** When provided, a canonical reference image is generated first and reused for all scene calls. */
+  storyContext?: StoryContext;
 };
 
 type Return = {
@@ -19,11 +22,17 @@ type Return = {
   readyCount: number;
 };
 
+// PostgREST validates UUID format strictly — passing a timestamp ID causes a 400.
+// Local dev stories use String(Date.now()) as id, which is not a UUID, so skip them.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function savePartialImageUrls(
   storyId: string,
   imageIndex: number,
   url: string,
 ): Promise<void> {
+  if (!UUID_RE.test(storyId)) return;
+
   const { data } = await supabase
     .from("stories")
     .select("image_urls")
@@ -43,7 +52,7 @@ async function savePartialImageUrls(
 }
 
 /**
- * Module-level deduplication map: prompt → in-flight Promise.
+ * Module-level deduplication map: key → in-flight Promise.
  *
  * This solves the React StrictMode double-mount problem where:
  * 1. Mount 1 starts the async loop, adds slot[0] to inFlightRef, fires the fetch
@@ -59,11 +68,24 @@ async function savePartialImageUrls(
  */
 const pendingGenerations = new Map<string, Promise<string>>();
 
-export function generateSceneImageOnce(prompt: string): Promise<string> {
-  const existing = pendingGenerations.get(prompt);
+export function generateSceneImageOnce(prompt: string, referenceImage?: string): Promise<string> {
+  const key = `${prompt}::${referenceImage ?? ""}`;
+  const existing = pendingGenerations.get(key);
   if (existing) return existing;
-  const p = generateSceneImage(prompt).finally(() => pendingGenerations.delete(prompt));
-  pendingGenerations.set(prompt, p);
+  const p = generateSceneImage(prompt, referenceImage).finally(() => pendingGenerations.delete(key));
+  pendingGenerations.set(key, p);
+  return p;
+}
+
+// Separate dedup map for the reference image — keyed on the character-sheet prompt.
+const pendingReferenceGenerations = new Map<string, Promise<string>>();
+
+function generateReferenceImageOnce(ctx: StoryContext): Promise<string> {
+  const key = buildReferenceImagePrompt(ctx);
+  const existing = pendingReferenceGenerations.get(key);
+  if (existing) return existing;
+  const p = generateReferenceImage(ctx).finally(() => pendingReferenceGenerations.delete(key));
+  pendingReferenceGenerations.set(key, p);
   return p;
 }
 
@@ -72,6 +94,7 @@ export function useProgressiveImages({
   paragraphCount,
   storyId,
   theme,
+  storyContext,
 }: Options): Return {
   const [images, setImages] = useState<(string | null)[]>(() =>
     slots.length > 0 ? Array(paragraphCount).fill(null) : [],
@@ -86,13 +109,28 @@ export function useProgressiveImages({
     let aborted = false;
 
     void (async () => {
+      // Step 1: generate and upload the canonical reference image before any scene.
+      // All scene requests reuse this public URL so the model locks visual identity.
+      let referenceImageUrl: string | undefined;
+      if (storyContext) {
+        try {
+          const base64 = await generateReferenceImageOnce(storyContext);
+          if (!aborted && storyId) {
+            referenceImageUrl = await uploadReferenceImage(storyId, base64);
+          }
+        } catch (err) {
+          console.warn("Reference image generation/upload failed — using text-only prompts:", err);
+        }
+      }
+
+      // Step 2: generate each scene image, passing the reference URL for visual consistency.
       for (const slot of slots) {
         if (aborted) break;
 
         try {
-          // generateSceneImageOnce deduplicates concurrent requests for the same prompt
+          // generateSceneImageOnce deduplicates concurrent requests for the same prompt+reference
           // so StrictMode's second mount reuses the first mount's in-flight Promise
-          const url = await generateSceneImageOnce(slot.prompt);
+          const url = await generateSceneImageOnce(slot.prompt, referenceImageUrl);
           if (aborted) break;
 
           setImages((prev) => {
@@ -136,7 +174,7 @@ export function useProgressiveImages({
       aborted = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slots, storyId, paragraphCount, theme]);
+  }, [slots, storyId, paragraphCount, theme, storyContext]);
 
   const readyCount = images.filter(Boolean).length;
   const allDone = slots.length > 0 && readyCount >= slots.length;
