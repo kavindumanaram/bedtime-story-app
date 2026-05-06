@@ -5,15 +5,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm install         # Install dependencies
-npm run dev         # Start dev server at http://localhost:5173
-npm run build       # Build production dist/
-npm run preview     # Preview production build locally
-npm run test        # Run tests in watch mode (Vitest)
-npm run test:run    # Run tests once and exit
+pnpm install           # Install all workspace dependencies (run from repo root)
+pnpm dev               # Start backend (port 3000) + frontend (port 5173) concurrently
+pnpm build             # Build frontend production dist/
+pnpm test              # Run frontend tests in watch mode (Vitest)
+pnpm test:run          # Run frontend tests once and exit
+
+# Run a single package
+pnpm --filter @bedtime/backend dev     # Backend only (tsx watch, hot reload)
+pnpm --filter @bedtime/frontend dev    # Frontend only
 ```
 
-TypeScript strict mode (`noUnusedLocals`, `noUnusedParameters`, strict null checks) is enabled. No lint script is configured.
+TypeScript strict mode (`noUnusedLocals`, `noUnusedParameters`, strict null checks) is enabled across all packages. No lint script is configured.
 
 ## Environment
 
@@ -29,7 +32,7 @@ Vite exposes `VITE_` prefixed variables to the browser via `import.meta.env`. Al
 
 ## Architecture
 
-**HushTales** is a React + TypeScript SPA that calls OpenAI APIs and Supabase directly from the browser. There is no dedicated backend server. Story data is persisted in `data/db.json` via a Vite dev server middleware (dev-only) and in Supabase `stories` table (production target).
+**HushTales** is a pnpm monorepo (three packages: `frontend`, `backend`, `shared`) where the React SPA calls OpenAI APIs and Supabase directly from the browser. Story data is persisted in `data/db.json` via the `@bedtime/backend` Hono server (port 3000, dev-only); the frontend Vite dev server proxies `/api/*` to it. Production target uses Supabase `stories` table. SST v3 (`sst.config.ts`) defines the future AWS infrastructure (S3 + Lambda).
 
 ### Tech Stack
 
@@ -152,7 +155,10 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 | `src/pages/Profile.tsx`         | Parent info + full children CRUD (add/edit/delete) with preferences UI                                                                                                                      |
 | `src/pages/Player.tsx`          | 3-phase ritual for new stories (`RitualPhase`: preparation → intro → player); `CinematicIntro` for Library stories; TTS narration with `narratableText` fallback (text[] → summary); progressive scene images; streak on last page; feedback footer |
 | `src/pages/Dashboard.tsx`       | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge                                                                                     |
-| `vite.config.ts`                | Vite config + inline `db-api` middleware plugin for file-based persistence                                                                                                                  |
+| `packages/frontend/vite.config.ts` | Vite config + `/api` proxy to `@bedtime/backend` on port 3000
+| `packages/backend/src/app.ts`   | Hono app — `GET /api/db` and `POST /api/db` replacing the old Vite middleware
+| `packages/shared/index.ts`      | Shared `StoryNode` interface used by both frontend and backend
+| `sst.config.ts`                 | SST v3 infrastructure — `StoryAssets` S3 bucket + `StoryApi` Lambda function                                                                                                                  |
 
 ### Key Components
 

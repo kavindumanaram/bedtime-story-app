@@ -1,0 +1,13 @@
+{
+  "name": "@bedtime/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2"
+  }
+}

@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id            String    @id @db.Uuid
+  displayName   String?   @map("display_name")
+  locale        String    @default("en")
+  gdprConsentAt DateTime? @map("gdpr_consent_at") @db.Timestamptz
+  plan          String    @default("free")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  children     Child[]
+  stories      Story[]
+  dailyStories DailyStory[]
+  usageQuota   UsageQuota?
+  series       StorySeries[]
+  memories     ChildStoryMemory[]
+  characters   RecurringCharacter[]
+  feedback     StoryFeedback[]
+  streaks      ChildStreak[]
+
+  @@map("profiles")
+}
+
+model Child {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId    String   @map("parent_id") @db.Uuid
+  name        String
+  age         Int
+  avatarColor String   @default("#10b981") @map("avatar_color")
+  preferences Json     @default("{\"interests\":[],\"tone\":\"calm\",\"length\":\"medium\"}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  parent       Profile              @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  stories      Story[]
+  dailyStories DailyStory[]
+  streak       ChildStreak?
+  memory       ChildStoryMemory?
+  characters   RecurringCharacter[]
+  feedback     StoryFeedback[]
+  series       StorySeries[]
+
+  @@map("children")
+}
+
+model Story {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId         String   @map("parent_id") @db.Uuid
+  childId          String?  @map("child_id") @db.Uuid
+  title            String
+  summary          String?
+  paragraphs       String[]
+  theme            String?
+  coverUrl         String?  @map("cover_url")
+  imageUrls        String[] @map("image_urls")
+  isTemplate       Boolean  @default(false) @map("is_template")
+  templateId       String?  @map("template_id")
+  seriesId         String?  @map("series_id") @db.Uuid
+  episodeNum       Int?     @map("episode_num")
+  characterContext Json?    @map("character_context")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  parent       Profile           @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  child        Child?            @relation(fields: [childId], references: [id], onDelete: SetNull)
+  series       StorySeries?      @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  dailyStories DailyStory[]
+  feedback     StoryFeedback[]
+  memories     ChildStoryMemory[]
+
+  @@map("stories")
+}
+
+model PlaySession {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storyId        String   @map("story_id") @db.Uuid
+  childId        String   @map("child_id") @db.Uuid
+  parentId       String   @map("parent_id") @db.Uuid
+  pagesCompleted Int      @default(0) @map("pages_completed")
+  fullyCompleted Boolean  @default(false) @map("fully_completed")
+  playedAt       DateTime @default(now()) @map("played_at") @db.Date
+
+  @@map("play_sessions")
+}
+
+model DailyStory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  childId     String   @map("child_id") @db.Uuid
+  parentId    String   @map("parent_id") @db.Uuid
+  storyDate   DateTime @default(now()) @map("story_date") @db.Date
+  templateId  String   @map("template_id")
+  storyId     String?  @map("story_id") @db.Uuid
+  isGenerated Boolean  @default(false) @map("is_generated")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  child  Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  story  Story?  @relation(fields: [storyId], references: [id], onDelete: SetNull)
+
+  @@unique([childId, storyDate])
+  @@map("daily_stories")
+}
+
+model UsageQuota {
+  userId          String   @id @map("user_id") @db.Uuid
+  plan            String   @default("free")
+  monthlyAiCount  Int      @default(0) @map("monthly_ai_count")
+  monthlyAiLimit  Int      @default(0) @map("monthly_ai_limit")
+  dailyRegenLimit Int      @default(0) @map("daily_regen_limit")
+  quotaResetDate  DateTime @map("quota_reset_date") @db.Date
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("usage_quotas")
+}
+
+model ChildStreak {
+  childId       String    @id @map("child_id") @db.Uuid
+  parentId      String    @map("parent_id") @db.Uuid
+  currentStreak Int       @default(0) @map("current_streak")
+  longestStreak Int       @default(0) @map("longest_streak")
+  lastReadDate  DateTime? @map("last_read_date") @db.Date
+
+  child  Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@map("child_streaks")
+}
+
+model StorySeries {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  childId     String   @map("child_id") @db.Uuid
+  parentId    String   @map("parent_id") @db.Uuid
+  title       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  child    Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent   Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  episodes Story[]
+
+  @@map("story_series")
+}
+
+model ChildStoryMemory {
+  childId          String   @id @map("child_id") @db.Uuid
+  parentId         String   @map("parent_id") @db.Uuid
+  lastStoryId      String?  @map("last_story_id") @db.Uuid
+  lastStoryTitle   String?  @map("last_story_title")
+  lastStorySummary String?  @map("last_story_summary")
+  lastStoryEnding  String?  @map("last_story_ending")
+  favoriteThemes   String[] @default([]) @map("favorite_themes")
+  dislikedThemes   String[] @default([]) @map("disliked_themes")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  child     Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent    Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  lastStory Story?  @relation(fields: [lastStoryId], references: [id], onDelete: SetNull)
+
+  @@map("child_story_memory")
+}
+
+model RecurringCharacter {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  childId       String   @map("child_id") @db.Uuid
+  parentId      String   @map("parent_id") @db.Uuid
+  name          String
+  description   String?
+  timesAppeared Int      @default(1) @map("times_appeared")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  child  Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@map("recurring_characters")
+}
+
+model StoryFeedback {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storyId   String   @map("story_id") @db.Uuid
+  childId   String   @map("child_id") @db.Uuid
+  parentId  String   @map("parent_id") @db.Uuid
+  reaction  String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  story  Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  child  Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent Profile @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, childId])
+  @@map("story_feedback")
+}

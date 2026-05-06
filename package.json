@@ -1,36 +1,16 @@
 {
-  "name": "bedtime-storytelling-app",
+  "name": "bedtime-story-root",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest",
-    "test:run": "vitest run"
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "@prisma/client", "@prisma/engines", "prisma"]
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.105.1",
-    "lucide-react": "^0.294.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "recharts": "^2.10.3"
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @bedtime/backend dev\" \"pnpm --filter @bedtime/frontend dev\"",
+    "build": "pnpm --filter @bedtime/frontend build",
+    "test": "pnpm --filter @bedtime/frontend test",
+    "test:run": "pnpm --filter @bedtime/frontend test:run"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.16",
-    "jsdom": "^29.1.1",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.3.6",
-    "typescript": "^5.2.2",
-    "vite": "^5.0.8",
-    "vitest": "^4.1.5"
+    "concurrently": "^8.2.2"
   }
 }

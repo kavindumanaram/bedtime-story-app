@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(findstr \"CinematicIntro\")",
+      "Bash(npx node *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\repos\\\\bedtime-story-app\" -Force | ForEach-Object { if\\($_.PSIsContainer\\) { \"$\\($_.Name\\)/\" } else { $_.Name } } | Sort-Object)",
+      "PowerShell(Test-Path *)"
+    ]
+  }
+}

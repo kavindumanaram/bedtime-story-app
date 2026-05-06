@@ -15,6 +15,19 @@ dist-ssr
 # Generated story database (contains large base64 images)
 data/db.json
 
+# Monorepo packages
+packages/*/node_modules
+packages/*/dist
+packages/shared/.tsbuildinfo
+
+# SST
+.sst/
+.env.sst
+
+# Environment secrets (never commit)
+.env
+**/.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
