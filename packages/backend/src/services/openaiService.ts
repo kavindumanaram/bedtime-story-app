@@ -35,8 +35,8 @@ export type StoryContext = {
 
 const API_KEY = process.env.OPENAI_API_KEY!
 const CHAT_MODEL = 'gpt-4o-mini'
-const IMAGE_MODEL = 'gpt-image-1'
-const IMAGE_SIZE = '1536x1024'
+const IMAGE_MODEL = 'gpt-image-1-mini'
+const IMAGE_SIZE = '1024x1024'
 
 const LENGTH_PARAGRAPHS: Record<string, number> = { short: 3, medium: 4, long: 6 }
 
@@ -47,7 +47,18 @@ async function assertOk(res: Response, label: string): Promise<void> {
   throw new Error(body.error?.message ?? `${label} failed: ${res.statusText}`)
 }
 
+// Tracks buckets already verified/created this process lifetime to avoid per-upload checks
+const ensuredBuckets = new Set<string>()
+
+async function ensureStorageBucket(bucket: string): Promise<void> {
+  if (ensuredBuckets.has(bucket)) return
+  // createBucket is idempotent — ignore error if bucket already exists
+  await supabaseAdmin.storage.createBucket(bucket, { public: true }).catch(() => {})
+  ensuredBuckets.add(bucket)
+}
+
 async function uploadToStorage(bucket: string, path: string, base64: string): Promise<string> {
+  await ensureStorageBucket(bucket)
   const buffer = Buffer.from(base64, 'base64')
   const { error } = await supabaseAdmin.storage
     .from(bucket)
@@ -195,7 +206,7 @@ export async function generateReferenceImage(
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: IMAGE_MODEL, prompt, size: IMAGE_SIZE, n: 1 }),
+    body: JSON.stringify({ model: IMAGE_MODEL, prompt, size: '1024x1024', n: 1 }),
   })
   await assertOk(res, 'Reference image generation')
   const data = await res.json() as { data: Array<{ b64_json: string }> }
