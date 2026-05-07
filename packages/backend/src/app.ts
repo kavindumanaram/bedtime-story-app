@@ -1,8 +1,18 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { authMiddleware } from './middleware/auth.js'
 import * as auth from './services/authService.js'
 import * as db from './services/dbService.js'
+import * as openai from './services/openaiService.js'
+import { buildScenePrompt } from './services/promptBuilderService.js'
+import type { StoryCharacter, StoryContext } from './services/openaiService.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname_local = dirname(__filename)
+const DEV_DB_PATH = resolve(__dirname_local, '../../../data/db.json')
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -16,8 +26,25 @@ const REFRESH_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 export const app = new Hono()
 
 app.onError((err, c) => {
-  console.error('[backend error]', err)
+  console.error('[backend error]', err.message)
   return c.json({ error: err.message }, 500)
+})
+
+// ── Dev-only local db.json routes ─────────────────────────────────────────────
+
+app.get('/api/db', async (c) => {
+  try {
+    const raw = await readFile(DEV_DB_PATH, 'utf8')
+    return c.json(JSON.parse(raw))
+  } catch {
+    return c.json({ stories: [] })
+  }
+})
+
+app.post('/api/db', async (c) => {
+  const body = await c.req.text()
+  await writeFile(DEV_DB_PATH, body, 'utf8')
+  return c.json({ ok: true })
 })
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
@@ -243,6 +270,67 @@ api.post('/upload/reference-image', async (c) => {
   const { storyId, base64 } = await c.req.json<{ storyId: string; base64: string }>()
   const url = await db.uploadReferenceImage(storyId, base64)
   return c.json({ url })
+})
+
+// AI Generation
+api.post('/generate/story', async (c) => {
+  const { childName, age, theme, options } = await c.req.json<{
+    childName: string
+    age: number
+    theme: string
+    options?: {
+      tone?: string
+      length?: 'short' | 'medium' | 'long'
+      continuation?: {
+        lastTitle: string; lastSummary: string; lastEnding: string
+        favoriteThemes: string[]; recurringCharacters: string[]; episodeNum: number
+      }
+    }
+  }>()
+  const story = await openai.generateStory(childName, age, theme, options)
+  return c.json(story)
+})
+
+api.post('/generate/cover-image', async (c) => {
+  const { title, summary, storyId } = await c.req.json<{
+    title: string; summary: string; storyId?: string
+  }>()
+  const url = await openai.generateCoverImage(title, summary, storyId)
+  return c.json({ url })
+})
+
+api.post('/generate/scene-image', async (c) => {
+  const body = await c.req.json<{
+    prompt?: string
+    characterProfile?: StoryCharacter[]
+    nodeText?: string
+    environmentStyle?: string
+    choiceMade?: string
+    storyId?: string
+    imageIndex?: number
+    referenceImageUrl?: string
+  }>()
+
+  const prompt = (body.characterProfile && body.nodeText && body.environmentStyle)
+    ? buildScenePrompt(body.characterProfile, body.nodeText, body.environmentStyle, body.choiceMade)
+    : (body.prompt ?? '')
+
+  const url = await openai.generateSceneImage(prompt, body.storyId, body.imageIndex, body.referenceImageUrl)
+  return c.json({ url })
+})
+
+api.post('/generate/reference-image', async (c) => {
+  const { storyContext, storyId } = await c.req.json<{
+    storyContext: StoryContext; storyId?: string
+  }>()
+  const url = await openai.generateReferenceImage(storyContext, storyId)
+  return c.json({ url })
+})
+
+api.post('/generate/characters', async (c) => {
+  const { title, text } = await c.req.json<{ title: string; text: string[] }>()
+  const characters = await openai.extractStoryCharacters(title, text)
+  return c.json({ characters })
 })
 
 // Series

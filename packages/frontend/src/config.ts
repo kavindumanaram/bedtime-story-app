@@ -1,8 +1,3 @@
-export const config = {
-  openai: {
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY as string,
-    chatModel: "gpt-4o-mini",
-    imageModel: "gpt-image-1-mini",
-    imageSize: "1536x1024" as const,
-  },
-} as const;
+// OpenAI API key and model config has moved to packages/backend/src/services/openaiService.ts
+// The frontend never calls OpenAI directly — all AI generation goes through /api/generate/* endpoints.
+export {};

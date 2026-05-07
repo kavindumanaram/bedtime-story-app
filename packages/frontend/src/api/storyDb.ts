@@ -2,6 +2,8 @@ import type { StoryNode } from "@bedtime/shared";
 import { apiFetch } from "../lib/api";
 import type { StoryCharacter } from "./sceneImageApi";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export type GeneratedStory = Omit<StoryNode, "characterContext"> & {
   characterContext?: StoryCharacter[];
 };
@@ -50,7 +52,9 @@ export async function updateStoryCoverUrl(id: string, url: string): Promise<void
     db.stories[idx] = { ...db.stories[idx], coverImage: url };
     await writeDb(db);
   }
-  void apiFetch(`/api/stories/${id}/cover-url`, { method: "PATCH", body: JSON.stringify({ url }) });
+  if (UUID_RE.test(id)) {
+    void apiFetch(`/api/stories/${id}/cover-url`, { method: "PATCH", body: JSON.stringify({ url }) });
+  }
 }
 
 export async function updateStoryCharacterContext(
@@ -63,7 +67,9 @@ export async function updateStoryCharacterContext(
     db.stories[idx] = { ...db.stories[idx], characterContext: characters };
     await writeDb(db);
   }
-  void apiFetch(`/api/stories/${id}/character-context`, { method: "PATCH", body: JSON.stringify({ characters }) });
+  if (UUID_RE.test(id)) {
+    void apiFetch(`/api/stories/${id}/character-context`, { method: "PATCH", body: JSON.stringify({ characters }) });
+  }
 }
 
 export async function updateStoryImages(

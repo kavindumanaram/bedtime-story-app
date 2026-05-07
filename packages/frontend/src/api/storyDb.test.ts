@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { saveStory, loadStories, loadStory, updateStoryImages, type GeneratedStory } from "./storyDb";
+import {
+  saveStory, loadStories, loadStory, updateStoryImages,
+  updateStoryCoverUrl, updateStoryCharacterContext,
+  type GeneratedStory,
+} from "./storyDb";
+import type { StoryCharacter } from "./sceneImageApi";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -136,5 +141,97 @@ describe("updateStoryImages", () => {
     const written = JSON.parse(mockFetch.mock.calls[1][1].body);
     expect(written.stories).toHaveLength(2);
     expect(written.stories[1].title).toBe("Beta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: non-UUID story IDs (timestamps) must NOT trigger backend PATCH
+// calls that would cause "Error creating UUID, invalid length: 13" in Prisma.
+// ---------------------------------------------------------------------------
+
+const writeOk = () => Promise.resolve({ ok: true } as Response);
+const patchOk = () =>
+  Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response);
+
+describe("updateStoryCoverUrl", () => {
+  it("writes the new cover url into db.json", async () => {
+    const story = makeStory({ coverImage: "" });
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+    mockFetch.mockReturnValueOnce(patchOk());
+
+    await updateStoryCoverUrl(story.id, "https://cdn.example.com/cover.png");
+
+    const written = JSON.parse(mockFetch.mock.calls[1][1].body);
+    expect(written.stories[0].coverImage).toBe("https://cdn.example.com/cover.png");
+  });
+
+  it("does NOT call the backend when id is a timestamp (non-UUID)", async () => {
+    const story = makeStory({ id: String(Date.now()) });
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+
+    await updateStoryCoverUrl(story.id, "https://cdn.example.com/cover.png");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    mockFetch.mock.calls.forEach(([url]: [string]) => expect(url).toBe("/api/db"));
+  });
+
+  it("calls PATCH /api/stories/:id/cover-url when id is a valid UUID", async () => {
+    const story = makeStory();
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+    mockFetch.mockReturnValueOnce(patchOk());
+
+    await updateStoryCoverUrl(story.id, "https://cdn.example.com/cover.png");
+
+    const patch = mockFetch.mock.calls.find(([u]: [string]) => u.includes("/cover-url"));
+    expect(patch).toBeDefined();
+    expect(patch![0]).toBe(`/api/stories/${story.id}/cover-url`);
+    expect(patch![1].method).toBe("PATCH");
+    expect(JSON.parse(patch![1].body).url).toBe("https://cdn.example.com/cover.png");
+  });
+});
+
+describe("updateStoryCharacterContext", () => {
+  const chars: StoryCharacter[] = [
+    { name: "Alice", visualDescription: "A young girl with brown hair" },
+  ];
+
+  it("writes character context into db.json", async () => {
+    const story = makeStory({ id: String(Date.now()) });
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+
+    await updateStoryCharacterContext(story.id, chars);
+
+    const written = JSON.parse(mockFetch.mock.calls[1][1].body);
+    expect(written.stories[0].characterContext).toEqual(chars);
+  });
+
+  it("does NOT call the backend when id is a timestamp (non-UUID)", async () => {
+    const story = makeStory({ id: String(Date.now()) });
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+
+    await updateStoryCharacterContext(story.id, chars);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    mockFetch.mock.calls.forEach(([url]: [string]) => expect(url).toBe("/api/db"));
+  });
+
+  it("calls PATCH /api/stories/:id/character-context when id is a valid UUID", async () => {
+    const story = makeStory();
+    mockFetch.mockReturnValueOnce(dbResponse([story]));
+    mockFetch.mockReturnValueOnce(writeOk());
+    mockFetch.mockReturnValueOnce(patchOk());
+
+    await updateStoryCharacterContext(story.id, chars);
+
+    const patch = mockFetch.mock.calls.find(([u]: [string]) => u.includes("/character-context"));
+    expect(patch).toBeDefined();
+    expect(patch![0]).toBe(`/api/stories/${story.id}/character-context`);
+    expect(patch![1].method).toBe("PATCH");
+    expect(JSON.parse(patch![1].body).characters).toEqual(chars);
   });
 });

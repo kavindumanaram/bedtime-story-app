@@ -30,6 +30,10 @@ vi.mock("../hooks/useAmbientAudio", () => ({
   useAmbientAudio: () => ({ isPlaying: false, toggle: vi.fn() }),
 }));
 
+vi.mock("../lib/api", () => ({
+  apiFetch: vi.fn().mockResolvedValue({}),
+}));
+
 // Auto-dismiss the cinematic intro so it never blocks player content in tests
 vi.mock("../components/CinematicIntro", () => ({
   CinematicIntro: ({ onDone }: { onDone: () => void }) => {
@@ -39,6 +43,7 @@ vi.mock("../components/CinematicIntro", () => ({
 }));
 
 import { loadStory } from "../api/storyDb";
+import { apiFetch } from "../lib/api";
 
 const renderPlayer = (id = "1") =>
   render(
@@ -120,5 +125,46 @@ describe("Player", () => {
     // LargeStoryPlayer uses "Next page" aria-label
     fireEvent.click(screen.getByLabelText("Next page"));
     expect(screen.getAllByText("Second paragraph").length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: Player must not call the backend with non-UUID story IDs.
+// Timestamp IDs (String(Date.now())) caused Prisma "invalid UUID length: 13".
+// ---------------------------------------------------------------------------
+
+describe("Player UUID guard", () => {
+  const apiFetchMock = apiFetch as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+    (loadStory as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+  });
+
+  it("does not call the backend for a timestamp story id", async () => {
+    const timestampId = String(Date.now()); // 13-char, not a UUID
+    renderPlayer(timestampId);
+
+    // Give the effect time to run
+    await waitFor(() => {
+      expect(apiFetchMock).not.toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/stories\//),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("calls the backend for a valid UUID story id not found locally", async () => {
+    const uuid = crypto.randomUUID();
+    apiFetchMock.mockResolvedValueOnce({
+      id: uuid, title: "Remote Story", summary: "From backend.",
+      paragraphs: ["Once"], image_urls: [], cover_url: null,
+    });
+
+    renderPlayer(uuid);
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(`/api/stories/${uuid}`);
+    });
   });
 });
