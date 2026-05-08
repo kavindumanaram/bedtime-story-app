@@ -46,6 +46,8 @@ export interface DbStory {
   series_id: string | null
   episode_num: number | null
   character_context: unknown | null
+  is_branching?: boolean
+  story_graph?: unknown | null
   created_at: string
 }
 
@@ -145,4 +147,29 @@ export interface StoryNode {
   theme: string
   createdAt: string
   characterContext?: unknown[]
+  is_branching?: boolean
+  story_graph?: BranchingStoryGraph | null
+}
+
+export type BranchNodeType = "root" | "leaf"
+
+export interface GraphNode {
+  id: string
+  type: BranchNodeType
+  paragraphs: string[]
+  sceneImages: string[]
+  audioUrls: string[]
+}
+
+export interface StoryChoice {
+  label: string
+  trait: "brave" | "kind" | "curious" | "creative" | "helpful"
+  targetNodeId: string
+  preview_text: string
+}
+
+export interface BranchingStoryGraph {
+  rootNode: GraphNode
+  choices: [StoryChoice, StoryChoice]
+  leafNodes: GraphNode[]
 }

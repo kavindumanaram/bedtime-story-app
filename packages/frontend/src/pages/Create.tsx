@@ -140,7 +140,7 @@ export const Create: React.FC = () => {
         id: String(Date.now()),
         title: story.title,
         summary: story.summary,
-        text: story.text,
+        text: story.text,  // root paragraphs for Library display + Player fallback
         coverImage: "",
         images: [],
         childName: activeChild.name,
@@ -148,6 +148,8 @@ export const Create: React.FC = () => {
         theme,
         createdAt: new Date().toISOString(),
         characterContext: extractedChars.length > 0 ? extractedChars : undefined,
+        is_branching: story.is_branching,
+        story_graph: story.story_graph,
       };
       await saveStory(saved);
       setCreatedStory(saved);

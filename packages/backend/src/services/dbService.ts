@@ -4,7 +4,7 @@ type PrismaChar = Awaited<ReturnType<typeof prisma.recurringCharacter.findFirst>
 import type {
   Profile, Child, DbStory, DailyStory, UsageQuota,
   ChildStreak, RecurringCharacter,
-  MemoryContext, DashboardStats,
+  MemoryContext, DashboardStats, BranchingStoryGraph,
 } from '@bedtime/shared'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -49,14 +49,17 @@ function mapStory(s: {
   summary: string | null; paragraphs: string[]; theme: string | null
   coverUrl: string | null; imageUrls: string[]; isTemplate: boolean
   templateId: string | null; seriesId: string | null; episodeNum: number | null
-  characterContext: unknown; createdAt: Date
+  characterContext: unknown; isBranching: boolean; storyGraph: unknown; createdAt: Date
 }): DbStory {
   return {
     id: s.id, parent_id: s.parentId, child_id: s.childId, title: s.title,
     summary: s.summary, paragraphs: s.paragraphs, theme: s.theme,
     cover_url: s.coverUrl, image_urls: s.imageUrls, is_template: s.isTemplate,
     template_id: s.templateId, series_id: s.seriesId, episode_num: s.episodeNum,
-    character_context: s.characterContext, created_at: toIso(s.createdAt)!,
+    character_context: s.characterContext,
+    is_branching: s.isBranching,
+    story_graph: s.storyGraph ?? null,
+    created_at: toIso(s.createdAt)!,
   }
 }
 
@@ -155,6 +158,7 @@ export async function createStory(
     cover_url?: string; image_urls?: string[]; child_id?: string
     is_template?: boolean; template_id?: string
     series_id?: string; episode_num?: number; character_context?: unknown
+    is_branching?: boolean; story_graph?: unknown
   },
 ): Promise<DbStory> {
   const s = await prisma.story.create({
@@ -172,6 +176,8 @@ export async function createStory(
       seriesId: data.series_id ?? null,
       episodeNum: data.episode_num ?? null,
       characterContext: (data.character_context as object) ?? undefined,
+      isBranching: data.is_branching ?? false,
+      storyGraph: (data.story_graph as object) ?? undefined,
     },
   })
   return mapStory(s)
@@ -208,6 +214,47 @@ export async function updateStorySeriesInfo(
   episodeNum: number,
 ): Promise<void> {
   await prisma.story.update({ where: { id }, data: { seriesId, episodeNum } })
+}
+
+export async function updateGraphNodeImage(
+  storyId: string,
+  nodeId: string,
+  imageIndex: number,
+  url: string,
+  userId: string,
+): Promise<void> {
+  const row = await prisma.story.findFirst({
+    where: { id: storyId, parentId: userId },
+    select: { storyGraph: true },
+  })
+  if (!row?.storyGraph) return
+  const graph = row.storyGraph as unknown as BranchingStoryGraph
+  if (nodeId === graph.rootNode.id) {
+    graph.rootNode.sceneImages[imageIndex] = url
+  } else {
+    const leaf = graph.leafNodes.find(n => n.id === nodeId)
+    if (leaf) leaf.sceneImages[imageIndex] = url
+  }
+  await prisma.story.updateMany({
+    where: { id: storyId, parentId: userId },
+    data: { storyGraph: graph as object },
+  })
+}
+
+export async function appendTrait(childId: string, userId: string, trait: string): Promise<void> {
+  const entry = `trait:${trait}`
+  const existing = await prisma.childStoryMemory.findUnique({ where: { childId } })
+  if (existing) {
+    if ((existing.favoriteThemes as string[]).includes(entry)) return
+    await prisma.childStoryMemory.update({
+      where: { childId },
+      data: { favoriteThemes: { push: entry } },
+    })
+  } else {
+    await prisma.childStoryMemory.create({
+      data: { childId, parentId: userId, favoriteThemes: [entry] },
+    })
+  }
 }
 
 // ── Daily Story ───────────────────────────────────────────────────────────────

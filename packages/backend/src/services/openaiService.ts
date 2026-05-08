@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
+import type { BranchingStoryGraph } from '@bedtime/shared'
 
 type StoryContent = { title: string; summary: string; text: string[] }
+type BranchingStoryContent = { title: string; summary: string; story_graph: BranchingStoryGraph }
 
 type ContinuationContext = {
   lastTitle: string
@@ -126,6 +128,91 @@ export async function generateStory(
   }
 }
 
+export async function generateBranchingStory(
+  childName: string,
+  age: number,
+  theme: string,
+  options?: { tone?: string; length?: 'short' | 'medium' | 'long' },
+): Promise<BranchingStoryContent> {
+  const tone = options?.tone ?? 'calm'
+  const length = options?.length ?? 'medium'
+  const rootCount = length === 'short' ? 3 : 4
+  const leafCount = length === 'long' ? 5 : 4
+
+  const userPrompt =
+    `Write a ${length} bedtime story with a ${tone} tone for ${childName}, age ${age}, about "${theme}". ` +
+    `The story has a branching structure:\n` +
+    `1. A BEGINNING (exactly ${rootCount} short paragraphs) where ${childName} faces a moment of choice.\n` +
+    `2. TWO CHOICES: two different things ${childName} could do next.\n` +
+    `3. ENDING A (exactly ${leafCount} short paragraphs): what happens after choice A.\n` +
+    `4. ENDING B (exactly ${leafCount} short paragraphs): what happens after choice B.\n\n` +
+    `Return JSON with exactly these keys:\n` +
+    `{\n` +
+    `  "title": "...",\n` +
+    `  "summary": "one sentence summary",\n` +
+    `  "rootParagraphs": ["...", ...] (exactly ${rootCount} items),\n` +
+    `  "choices": [\n` +
+    `    { "label": "short action phrase for choice A", "trait": "brave|kind|curious|creative|helpful", "preview_text": "one teaser sentence" },\n` +
+    `    { "label": "short action phrase for choice B", "trait": "brave|kind|curious|creative|helpful", "preview_text": "one teaser sentence" }\n` +
+    `  ],\n` +
+    `  "leafAParagraphs": ["...", ...] (exactly ${leafCount} items),\n` +
+    `  "leafBParagraphs": ["...", ...] (exactly ${leafCount} items)\n` +
+    `}`
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CHAT_MODEL,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: "You are a children's bedtime story writer. Reply with JSON only." },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  })
+  await assertOk(res, 'Branching story generation')
+  const data = await res.json() as { choices: [{ message: { content: string } }] }
+  const p = JSON.parse(data.choices[0].message.content) as {
+    title: string; summary: string
+    rootParagraphs: string[]
+    choices: Array<{ label: string; trait: string; preview_text: string }>
+    leafAParagraphs: string[]; leafBParagraphs: string[]
+  }
+
+  const rootId = crypto.randomUUID()
+  const leafAId = crypto.randomUUID()
+  const leafBId = crypto.randomUUID()
+
+  const story_graph: BranchingStoryGraph = {
+    rootNode: { id: rootId, type: 'root', paragraphs: p.rootParagraphs ?? [], sceneImages: [], audioUrls: [] },
+    choices: [
+      {
+        label: p.choices?.[0]?.label ?? 'Be brave',
+        trait: (p.choices?.[0]?.trait ?? 'brave') as BranchingStoryGraph['choices'][0]['trait'],
+        targetNodeId: leafAId,
+        preview_text: p.choices?.[0]?.preview_text ?? '',
+      },
+      {
+        label: p.choices?.[1]?.label ?? 'Be kind',
+        trait: (p.choices?.[1]?.trait ?? 'kind') as BranchingStoryGraph['choices'][1]['trait'],
+        targetNodeId: leafBId,
+        preview_text: p.choices?.[1]?.preview_text ?? '',
+      },
+    ],
+    leafNodes: [
+      { id: leafAId, type: 'leaf', paragraphs: p.leafAParagraphs ?? [], sceneImages: [], audioUrls: [] },
+      { id: leafBId, type: 'leaf', paragraphs: p.leafBParagraphs ?? [], sceneImages: [], audioUrls: [] },
+    ],
+  }
+
+  return {
+    title: p.title ?? `A Story for ${childName}`,
+    summary: p.summary ?? '',
+    story_graph,
+  }
+}
+
 export async function generateCoverImage(
   title: string,
   summary: string,
@@ -153,9 +240,10 @@ export async function generateSceneImage(
   prompt: string,
   storyId?: string,
   imageIndex?: number,
-  referenceImageUrl?: string,
+  _referenceImageUrl?: string,
+  imageModel?: string,
 ): Promise<string> {
-  const body: Record<string, unknown> = { model: IMAGE_MODEL, prompt, size: IMAGE_SIZE, n: 1 }
+  const body: Record<string, unknown> = { model: imageModel ?? IMAGE_MODEL, prompt, size: IMAGE_SIZE, n: 1 }
 
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',

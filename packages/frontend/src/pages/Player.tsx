@@ -14,13 +14,14 @@ import { AudioControls, VOICE_PROFILES } from "../components/AudioControls";
 import { stories } from "../data/mock";
 import { loadStory } from "../api/storyDb";
 import { updateStreak } from "../api/dailyStory";
-import { updateMemoryAfterRead, saveFeedback } from "../api/storyMemory";
+import { updateMemoryAfterRead, saveFeedback, persistChoiceSelection } from "../api/storyMemory";
 import { useAuth } from "../contexts/AuthContext";
 import { useProgressiveImages } from "../hooks/useProgressiveImages";
 import type { SceneSlot, StoryContext } from "../api/sceneImageApi";
-import type { FeedbackReaction } from "@bedtime/shared";
+import type { FeedbackReaction, BranchingStoryGraph, GraphNode, StoryChoice } from "@bedtime/shared";
 import { apiFetch } from "../lib/api";
 import { getDevSettings } from "../lib/devSettings";
+import { ChoiceOverlay } from "../components/ChoiceOverlay";
 
 const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
   { reaction: "loved",          icon: Heart,          label: "Loved it" },
@@ -74,6 +75,13 @@ export const Player: React.FC = () => {
   const [markedContinue, setMarkedContinue] = useState(false);
   const [streakUpdated, setStreakUpdated] = useState(false);
 
+  // Branching story state
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [showChoiceOverlay, setShowChoiceOverlay] = useState(false);
+  // Set to true when a choice is made; the effect below starts leaf narration after React
+  // commits the new activeNodeId (guaranteeing narratableText contains the leaf paragraphs).
+  const [leafNarrationPending, setLeafNarrationPending] = useState(false);
+
   // TTS controls
   const [ttsSpeed, setTtsSpeed] = useState(0.95);
   const [ttsVoice, setTtsVoice] = useState(VOICE_PROFILES[0].id);
@@ -101,6 +109,15 @@ export const Player: React.FC = () => {
     loadStory(id).then(async (saved) => {
       if (saved) {
         setCurrentStory({ ...stories[0], ...saved, pages: saved.images ?? [saved.coverImage] });
+        if (saved.is_branching && saved.story_graph) {
+          console.log("[Player] Branching story loaded — root node set", {
+            rootId: saved.story_graph.rootNode.id,
+            rootParagraphs: saved.story_graph.rootNode.paragraphs.length,
+            choices: saved.story_graph.choices.map(c => c.label),
+            leafParagraphs: saved.story_graph.leafNodes.map(n => n.paragraphs.length),
+          });
+          setActiveNodeId(saved.story_graph.rootNode.id);
+        }
         setIsLoading(false);
         return;
       }
@@ -113,6 +130,7 @@ export const Player: React.FC = () => {
         const data = await apiFetch<{
           id: string; title: string; summary: string | null;
           paragraphs: string[]; image_urls: string[]; cover_url: string | null;
+          is_branching?: boolean; story_graph?: BranchingStoryGraph | null;
         }>(`/api/stories/${id}`);
         setCurrentStory({
           ...stories[0],
@@ -122,13 +140,29 @@ export const Player: React.FC = () => {
           text: data.paragraphs ?? [],
           pages: data.image_urls?.length ? data.image_urls : (data.cover_url ? [data.cover_url] : undefined),
           coverUrl: data.cover_url ?? stories[0].coverUrl,
+          is_branching: data.is_branching,
+          story_graph: data.story_graph,
         });
+        if (data.is_branching && data.story_graph) {
+          setActiveNodeId(data.story_graph.rootNode.id);
+        }
       } catch { /* story not found */ }
       setIsLoading(false);
     });
   }, [id]);
 
-  const paragraphs = currentStory.text ?? [];
+  // Branching story — derive active node (root or chosen leaf)
+  const isBranching = !!(currentStory as any).is_branching;
+  const storyGraph = isBranching
+    ? ((currentStory as any).story_graph as BranchingStoryGraph | null)
+    : null;
+  const activeNode: GraphNode | null = storyGraph
+    ? (activeNodeId === storyGraph.rootNode.id
+        ? storyGraph.rootNode
+        : storyGraph.leafNodes.find((n) => n.id === activeNodeId) ?? storyGraph.rootNode)
+    : null;
+
+  const paragraphs = activeNode?.paragraphs ?? (currentStory.text ?? []);
   // Fallback: if story has no paragraph text, narrate from summary so AudioControls always works
   const narratableText = paragraphs.length > 0 ? paragraphs : (currentStory.summary ? [currentStory.summary] : []);
 
@@ -144,7 +178,7 @@ export const Player: React.FC = () => {
   // Intro gating: keep prep/intro screens until MIN_READY_IMAGES are loaded
   const MIN_READY_IMAGES = 3;
   const MAX_WAIT_MS = 120_000;
-  const readyToAdvance = isNewStory && (readyCount >= MIN_READY_IMAGES || maxWaitElapsed);
+  const readyToAdvance = isNewStory && (readyCount >= Math.min(MIN_READY_IMAGES, Math.max(1, sceneSlots.length)) || maxWaitElapsed);
 
   // 120s absolute fallback — force past any ritual phase
   useEffect(() => {
@@ -180,6 +214,27 @@ export const Player: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ritualPhase, progressiveImages]);
 
+  // After a branch choice, start narrating the leaf node's first paragraph.
+  // Fires after React commits the new activeNodeId so narratableText is guaranteed
+  // to contain the leaf paragraphs — avoiding the ref-timing race in handleChoiceSelect.
+  //
+  // No cleanup returned: setLeafNarrationPending(false) immediately triggers a second
+  // render which would re-run this effect's cleanup and cancel the 350ms timer before
+  // it fires. The timer is intentionally fire-and-forget; speakRef stays valid across
+  // renders, and React 18 silently ignores state updates on unmounted components.
+  useEffect(() => {
+    if (!leafNarrationPending || narratableText.length === 0) return;
+    setLeafNarrationPending(false);
+    narrationStartedRef.current = true;
+    const firstParagraph = narratableText[0];
+    setTimeout(() => speakRef.current?.(firstParagraph), 350);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leafNarrationPending, narratableText]);
+
+  // Keep isChoicePointRef current so async TTS onend callback can read it without stale closure
+  const isChoicePointRef = useRef(false);
+  useEffect(() => { isChoicePointRef.current = isChoicePoint; });
+
   // When an image arrives for a page we were waiting on, advance and continue narrating
   useEffect(() => {
     const pending = pendingAdvanceRef.current;
@@ -213,7 +268,7 @@ export const Player: React.FC = () => {
     loadVoices();
     if ("speechSynthesis" in window) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
-      return () => { window.speechSynthesis.onvoiceschanged = null; };
+      return () => { if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null; };
     }
   }, []);
 
@@ -259,6 +314,9 @@ export const Player: React.FC = () => {
         } else {
           pendingAdvanceRef.current = next;
         }
+      } else if (isChoicePointRef.current) {
+        // Last root-node paragraph finished — now show the choice overlay
+        setTimeout(() => setShowChoiceOverlay(true), 600);
       }
     };
     utter.onerror = () => { setIsTTSPlaying(false); setIsTTSLoading(false); setTtsProgress(0); };
@@ -293,13 +351,43 @@ export const Player: React.FC = () => {
 
   const hasParagraphs = narratableText.length > 0;
   const isLastPage = hasParagraphs && textPage === narratableText.length - 1;
+  // On a branching story: last page of root node shows the choice overlay, not the feedback footer
+  const isChoicePoint = isLastPage && isBranching && storyGraph !== null && activeNodeId === storyGraph.rootNode.id;
+  const isRealLastPage = isLastPage && !isChoicePoint;
 
   useEffect(() => {
-    if (isLastPage && !streakUpdated && activeChild && profile) {
+    if (isRealLastPage && !streakUpdated && activeChild && profile) {
+      console.log("[Player] Story end reached — updating streak", { nodeId: activeNodeId, child: activeChild.name });
       setStreakUpdated(true);
       updateStreak(activeChild.id, profile.id).catch(() => {/* non-blocking */});
     }
-  }, [isLastPage, streakUpdated, activeChild, profile]);
+  }, [isRealLastPage, streakUpdated, activeChild, profile]);
+
+  // Show the choice overlay when the player reaches the end of the root node.
+  // Gate on ritualPhase === "player" so it never fires during preparation/intro screens.
+  // When autoplay is on, speakParagraph.onend shows the overlay after the last paragraph narrates.
+  // When autoplay is off (or user skipped narration), show after 900ms — long enough that the
+  // auto-advance 700ms setTimeout will have started TTS if it was going to.
+  useEffect(() => {
+    if (!isChoicePoint || ritualPhase !== "player") return;
+    console.log("[Player] Choice point reached — waiting for narration to finish before showing ChoiceOverlay", {
+      activeNodeId,
+      rootNodeId: storyGraph?.rootNode.id,
+      choices: storyGraph?.choices.map(c => c.label),
+    });
+    // Use a long delay only when TTS is available and autoplay is on,
+    // so the 700ms auto-advance can start speaking before we check.
+    // In environments without speechSynthesis (tests, some browsers) use a short delay.
+    const hasTTS = "speechSynthesis" in window;
+    const delay = devSettings.autoplayEnabled && hasTTS ? 900 : 200;
+    const t = setTimeout(() => {
+      if (!isChoicePointRef.current) return; // choice already resolved
+      // If TTS started speaking, onend will show the overlay — don't race it
+      if (hasTTS && window.speechSynthesis.speaking) return;
+      setShowChoiceOverlay(true);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [isChoicePoint, ritualPhase]);
 
   const handleFeedback = async (reaction: FeedbackReaction) => {
     if (!activeChild || !profile || !id) return;
@@ -314,6 +402,24 @@ export const Player: React.FC = () => {
     const lastP = paragraphs[paragraphs.length - 1] ?? "";
     const summary = (currentStory.summary as string | undefined) ?? "";
     await updateMemoryAfterRead(activeChild.id, profile.id, id, summary, lastP).catch(() => {/* non-blocking */});
+  };
+
+  const handleChoiceSelect = (choice: StoryChoice) => {
+    console.log("[Player] Choice selected:", { label: choice.label, trait: choice.trait, targetNodeId: choice.targetNodeId });
+    stopTTS();
+    pendingAdvanceRef.current = null;
+    setShowChoiceOverlay(false);
+    setActiveNodeId(choice.targetNodeId);
+    setTextPage(0);
+    if (activeChild) {
+      persistChoiceSelection(activeChild.id, choice.label, choice.trait).catch(() => {});
+    }
+    // Signal the leafNarrationPending effect to start narrating.
+    // Batched with setActiveNodeId so the effect fires only after the render where
+    // narratableText already holds the leaf paragraphs — no ref-timing race.
+    if (devSettings.autoplayEnabled) {
+      setLeafNarrationPending(true);
+    }
   };
 
   const handleSpeedChange = (speed: number) => {
@@ -343,15 +449,18 @@ export const Player: React.FC = () => {
 
   // New-generation stories (slots present): always use progressiveImages so shimmer shows
   // while generating and images fill in as they arrive.
+  // Branching stories: use active node's sceneImages when available.
   // Revisited/cached stories (no slots): fall back to images stored in Supabase / local db.
   const carouselPages: (string | null)[] | undefined =
-    sceneSlots.length > 0
-      ? (progressiveImages.length > 0 ? progressiveImages : undefined)
-      : ((currentStory as any).images?.length
-          ? (currentStory as any).images
-          : currentStory.pages?.length
-            ? currentStory.pages
-            : undefined);
+    activeNode?.sceneImages.length
+      ? activeNode.sceneImages
+      : sceneSlots.length > 0
+        ? (progressiveImages.length > 0 ? progressiveImages : undefined)
+        : ((currentStory as any).images?.length
+            ? (currentStory as any).images
+            : currentStory.pages?.length
+              ? currentStory.pages
+              : undefined);
 
   const ttsDurationSecs = hasParagraphs
     ? Math.max(1, Math.round(narratableText[textPage].length * 0.065 / ttsSpeed))
@@ -405,8 +514,8 @@ export const Player: React.FC = () => {
           minDurationMs={35_000}
           readyToAdvance={readyToAdvance}
           skipAfterMs={10_000}
-          onComplete={() => setRitualPhase("intro")}
-          onSkip={() => { setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
+          onComplete={() => { console.log("[Player] Preparation complete → intro"); setRitualPhase("intro"); }}
+          onSkip={() => { console.log("[Player] Preparation skipped → player"); setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
         />
       )}
 
@@ -419,8 +528,8 @@ export const Player: React.FC = () => {
           backgroundImage={progressiveImages[0] ?? null}
           duration={18_000}
           readyToAdvance={readyToAdvance}
-          onComplete={() => setRitualPhase("player")}
-          onSkip={() => { setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
+          onComplete={() => { console.log("[Player] Intro complete → player"); setRitualPhase("player"); }}
+          onSkip={() => { console.log("[Player] Intro skipped → player"); setUserSkipped(true); setRitualPhase("player"); setShowPlayPrompt(true); }}
         />
       )}
 
@@ -491,6 +600,17 @@ export const Player: React.FC = () => {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Branching story choice overlay — only in player phase to avoid z-index clash with prep/intro screens */}
+          {showChoiceOverlay && storyGraph && ritualPhase === "player" && (
+            <ChoiceOverlay
+              choices={storyGraph.choices}
+              childName={activeChild?.name ?? routerState.childName}
+              ttsVoice={ttsVoice}
+              ttsSpeed={ttsSpeed}
+              onSelect={handleChoiceSelect}
+            />
           )}
 
           {/* Voice settings panel */}
@@ -587,8 +707,8 @@ export const Player: React.FC = () => {
           )}
         </div>
 
-        {/* Feedback footer — last page only */}
-        {isLastPage && (
+        {/* Feedback footer — true last page only (not the choice point in branching stories) */}
+        {isRealLastPage && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-gray-700">How was the story?</h3>
             <div className="flex flex-wrap gap-2">

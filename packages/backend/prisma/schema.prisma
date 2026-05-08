@@ -64,6 +64,8 @@ model Story {
   seriesId         String?  @map("series_id") @db.Uuid
   episodeNum       Int?     @map("episode_num")
   characterContext Json?    @map("character_context")
+  isBranching      Boolean  @default(false) @map("is_branching")
+  storyGraph       Json?    @map("story_graph")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   parent       Profile           @relation(fields: [parentId], references: [id], onDelete: Cascade)

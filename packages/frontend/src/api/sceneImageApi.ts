@@ -1,3 +1,5 @@
+import { buildCharacterIdentityText } from '../lib/characterIdentity'
+
 export type SceneImageStatus = "pending" | "loading" | "ready" | "fallback" | "error";
 
 // --- Fallback images -----------------------------------------------------------
@@ -61,7 +63,31 @@ export type StyleContext = {
 export const LOCKED_ART_STYLE =
   "Pixar-style cinematic children's illustration, warm volumetric lighting, " +
   "storybook composition, highly detailed, consistent character design, " +
-  "cinematic framing, medium shot, eye-level camera, no text, safe for children";
+  "no text, safe for children";
+
+const CINEMATIC_CAMERAS = [
+  "wide establishing shot, expansive scene",
+  "medium shot, warm storybook framing",
+  "intimate close-up, emotional expression",
+  "low angle looking up, heroic perspective",
+  "bird's-eye view, dynamic overhead",
+] as const;
+
+const MOTION_HINTS = [
+  "sense of adventure and movement",
+  "character mid-action with energy",
+  "quiet moment of wonder and discovery",
+  "expressive gesture, vivid body language",
+  "flowing motion with cinematic depth",
+] as const;
+
+const ATMOSPHERE_ACCENTS = [
+  "warm golden hour light",
+  "cool moonlit shimmer",
+  "magical sparkles and soft light rays",
+  "misty dreamy bokeh",
+  "rich vibrant colours",
+] as const;
 
 // --- Consistent image context types -------------------------------------------
 
@@ -197,21 +223,24 @@ export function buildConsistentSceneSlots(
   }
   const uniqueIndices = [...new Set(rawIndices)];
 
-  const charLock =
+  const identityBase =
     storyContext.characters.length > 0
-      ? storyContext.characters.map((c) => {
-          let desc = `${c.name}: ${c.visualDescription}`;
-          if (c.clothing) desc += `, ${c.clothing}`;
-          return desc;
-        }).join(". ") + "."
-      : `Main character: ${storyContext.mainCharacter}.`;
+      ? buildCharacterIdentityText(storyContext.characters)
+      : `Main character: ${storyContext.mainCharacter}`;
 
   return uniqueIndices.map((sceneIndex, imageIndex) => {
     const action = paragraphs[sceneIndex].split(/[.!?]/)[0].trim().slice(0, 200);
+    const camera = CINEMATIC_CAMERAS[imageIndex % CINEMATIC_CAMERAS.length];
+    const motion = MOTION_HINTS[imageIndex % MOTION_HINTS.length];
+    const atmos  = ATMOSPHERE_ACCENTS[imageIndex % ATMOSPHERE_ACCENTS.length];
 
     const prompt =
-      `${charLock} Environment: ${storyContext.environmentStyle}. ` +
-      `Scene: ${action}. Cinematic medium shot, eye-level, storybook framing. ${LOCKED_ART_STYLE}.`;
+      `${identityBase}. ` +
+      `Setting: ${storyContext.environmentStyle}. ` +
+      `Scene: ${action}. ` +
+      `${camera}. ${motion}. ${atmos}. ` +
+      `Maintain character identity consistency while allowing cinematic scene variation. ` +
+      `${LOCKED_ART_STYLE}.`;
 
     return { sceneIndex, imageIndex, prompt, status: "pending" as SceneImageStatus, url: null };
   });

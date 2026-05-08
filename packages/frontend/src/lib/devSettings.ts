@@ -6,6 +6,9 @@ export type StoryGenerationSettings = {
   cinematicIntroEnabled: boolean;
   autoplayEnabled: boolean;
   imageGenerationTimeoutMs: number;
+  generateReferenceImage: boolean;
+  imageModel: string;
+  useStaticImage: boolean;
 };
 
 const STORAGE_KEY = "husht_dev_settings";
@@ -16,6 +19,9 @@ export const DEV_SETTINGS_DEFAULTS: StoryGenerationSettings = {
   cinematicIntroEnabled: true,
   autoplayEnabled: true,
   imageGenerationTimeoutMs: 30000,
+  generateReferenceImage: false,
+  imageModel: "gpt-image-1-mini",
+  useStaticImage: false,
 };
 
 export function getDevSettings(): StoryGenerationSettings {

@@ -1,6 +1,6 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Player } from "./Player";
 
@@ -20,6 +20,7 @@ vi.mock("../api/dailyStory", () => ({
 vi.mock("../api/storyMemory", () => ({
   updateMemoryAfterRead: vi.fn().mockResolvedValue(undefined),
   saveFeedback: vi.fn().mockResolvedValue(undefined),
+  persistChoiceSelection: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../hooks/useProgressiveImages", () => ({
@@ -125,6 +126,118 @@ describe("Player", () => {
     // LargeStoryPlayer uses "Next page" aria-label
     fireEvent.click(screen.getByLabelText("Next page"));
     expect(screen.getAllByText("Second paragraph").length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branching story: ChoiceOverlay appears when a branching story root node is
+// fully read, confirming the isChoicePoint → showChoiceOverlay integration.
+// ---------------------------------------------------------------------------
+
+describe("Player — branching story ChoiceOverlay", () => {
+  // Restore real timers after every test in this block so fake-timer state cannot
+  // bleed into subsequent describe blocks (e.g., UUID guard tests use real waitFor).
+  afterEach(() => { vi.useRealTimers(); });
+
+  const rootNodeId = "00000000-aaaa-aaaa-aaaa-000000000001";
+  const leafAId    = "00000000-bbbb-bbbb-bbbb-000000000002";
+  const leafBId    = "00000000-cccc-cccc-cccc-000000000003";
+
+  const branchingStory = {
+    id: "1",
+    title: "The Magic Forest",
+    summary: "A branching adventure.",
+    text: ["Lily stood at the crossroads of the enchanted forest."],
+    is_branching: true,
+    story_graph: {
+      rootNode: {
+        id: rootNodeId,
+        type: "root",
+        paragraphs: ["Lily stood at the crossroads of the enchanted forest."],
+        sceneImages: [],
+        audioUrls: [],
+      },
+      choices: [
+        { label: "Follow the fireflies", trait: "curious", targetNodeId: leafAId, preview_text: "The lights dance deeper." },
+        { label: "Take the stone path",  trait: "brave",   targetNodeId: leafBId, preview_text: "The path leads to a castle." },
+      ],
+      leafNodes: [
+        { id: leafAId, type: "leaf", paragraphs: ["The fireflies led Lily to a magical glade."], sceneImages: [], audioUrls: [] },
+        { id: leafBId, type: "leaf", paragraphs: ["The stone path ended at a sleeping dragon."],  sceneImages: [], audioUrls: [] },
+      ],
+    },
+    coverImage: "data:image/png;base64,img",
+    childName: "Lily",
+    age: 6,
+    theme: "forest",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  it("shows ChoiceOverlay with both choices when the root node is the last page", async () => {
+    (loadStory as ReturnType<typeof vi.fn>).mockResolvedValue(branchingStory);
+    renderPlayer();
+    await waitFor(() => {
+      expect(screen.getByText(/What should.*do\?/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Follow the fireflies")).toBeInTheDocument();
+    expect(screen.getByText("Take the stone path")).toBeInTheDocument();
+  });
+
+  // Regression: clicking a choice must load the leaf content (Player.tsx — handleChoiceSelect)
+  it("transitions to the selected leaf node's paragraph after a choice is made", async () => {
+    vi.useFakeTimers();
+    (loadStory as ReturnType<typeof vi.fn>).mockResolvedValue(branchingStory);
+    renderPlayer();
+    await act(async () => { await Promise.resolve(); });
+    // Advance past ChoiceOverlay appearance (200ms, no speechSynthesis in JSDOM)
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(screen.getByText(/What should.*do\?/i)).toBeInTheDocument();
+    // Advance past the 2-second button lockout
+    await act(async () => { vi.advanceTimersByTime(2100); });
+    await act(async () => { fireEvent.click(screen.getByText("Follow the fireflies")); });
+    // Overlay gone; leaf paragraph now in DOM
+    expect(screen.queryByText(/What should.*do\?/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText("The fireflies led Lily to a magical glade.").length).toBeGreaterThan(0);
+  });
+
+  // Regression: after a choice, narration must auto-start for the leaf node
+  it("auto-starts narration for the leaf node after a choice is selected", async () => {
+    const speakMock = vi.fn();
+    // SpeechSynthesisUtterance is not in JSDOM; provide a minimal stub so ChoiceOverlay
+    // and speakParagraph can construct utterances without throwing.
+    const UtteranceStub = vi.fn().mockImplementation((text: string) => ({
+      text, rate: 1, lang: "", voice: null, onstart: null, onend: null, onerror: null,
+    }));
+    (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance = UtteranceStub;
+    Object.defineProperty(window, "speechSynthesis", {
+      value: { speak: speakMock, cancel: vi.fn(), speaking: false, getVoices: () => [], onvoiceschanged: null },
+      writable: true, configurable: true,
+    });
+    try {
+      vi.useFakeTimers();
+      (loadStory as ReturnType<typeof vi.fn>).mockResolvedValue(branchingStory);
+      renderPlayer();
+      await act(async () => { await Promise.resolve(); });
+      // With speechSynthesis present, overlay appears at 900ms (autoplay+TTS path)
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(screen.getByText(/What should.*do\?/i)).toBeInTheDocument();
+      // Clear the ChoiceOverlay's "What should Lily do?" TTS prompt
+      speakMock.mockClear();
+      // Advance past the 2-second button lockout (ChoiceOverlay mounts at ~900ms)
+      await act(async () => { vi.advanceTimersByTime(2100); });
+      // Select a choice
+      await act(async () => { fireEvent.click(screen.getByText("Follow the fireflies")); });
+      // Advance past the 350ms narration start delay
+      await act(async () => { vi.advanceTimersByTime(400); });
+      // Narration must start for the leaf paragraph
+      expect(speakMock).toHaveBeenCalledTimes(1);
+      const utter = speakMock.mock.calls[0][0] as SpeechSynthesisUtterance;
+      expect(utter.text).toBe("The fireflies led Lily to a magical glade.");
+    } finally {
+      // Delete both stubs so subsequent tests see a clean window without speechSynthesis.
+      delete (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance;
+      delete (window as unknown as Record<string, unknown>).speechSynthesis;
+    }
   });
 });
 

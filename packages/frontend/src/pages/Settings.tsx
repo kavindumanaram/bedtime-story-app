@@ -5,6 +5,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useDevSettings, DEV_SETTINGS_DEFAULTS, resetDevSettings } from '../lib/devSettings';
 
 const IMAGES_OPTIONS = [1, 3, 5, 8] as const;
+const IMAGE_MODEL_OPTIONS = [
+  { label: "gpt-image-1-mini (fast, cheap)", value: "gpt-image-1-mini" },
+  { label: "gpt-image-1 (higher quality)", value: "gpt-image-1" },
+  { label: "dall-e-3 (legacy)", value: "dall-e-3" },
+] as const;
 const TIMEOUT_OPTIONS = [
   { label: "5 s",  value: 5_000  },
   { label: "15 s", value: 15_000 },
@@ -278,6 +283,45 @@ export const Settings: React.FC = () => {
                   checked={devSettings.autoplayEnabled}
                   onChange={(v) => updateDevSettings({ autoplayEnabled: v })}
                 />
+              </div>
+
+              {/* Reference image */}
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Character Reference Image</p>
+                  <p className="text-xs text-gray-500">Generate a character sheet before scene images. Adds cost and latency; leave off unless testing consistency.</p>
+                </div>
+                <Toggle
+                  checked={devSettings.generateReferenceImage}
+                  onChange={(v) => updateDevSettings({ generateReferenceImage: v })}
+                />
+              </div>
+
+              {/* Static image mode */}
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Static Image Mode</p>
+                  <p className="text-xs text-gray-500">Skip all API image generation — use a local fallback for every scene. Zero cost, instant load.</p>
+                </div>
+                <Toggle
+                  checked={devSettings.useStaticImage}
+                  onChange={(v) => updateDevSettings({ useStaticImage: v })}
+                />
+              </div>
+
+              {/* Image model */}
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Image Model</p>
+                <p className="text-xs text-gray-500 mb-3">OpenAI model used for scene and cover image generation.</p>
+                <select
+                  value={devSettings.imageModel}
+                  onChange={(e) => updateDevSettings({ imageModel: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  {IMAGE_MODEL_OPTIONS.map(({ label, value }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Image generation timeout */}

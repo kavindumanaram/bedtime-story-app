@@ -1,4 +1,4 @@
-import type { StoryNode } from "@bedtime/shared";
+import type { StoryNode, BranchingStoryGraph } from "@bedtime/shared";
 import { apiFetch } from "../lib/api";
 import type { StoryCharacter } from "./sceneImageApi";
 
@@ -6,6 +6,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export type GeneratedStory = Omit<StoryNode, "characterContext"> & {
   characterContext?: StoryCharacter[];
+  is_branching?: boolean;
+  story_graph?: BranchingStoryGraph | null;
 };
 
 type DbSchema = { stories: GeneratedStory[] };
@@ -85,4 +87,33 @@ export async function updateStoryImages(
   images[imageIndex] = url;
   db.stories[idx] = { ...db.stories[idx], images };
   await writeDb(db);
+}
+
+export async function updateGraphNodeImage(
+  id: string,
+  nodeId: string,
+  imageIndex: number,
+  url: string,
+): Promise<void> {
+  const db = await readDb();
+  const idx = db.stories.findIndex((s) => s.id === id);
+  if (idx >= 0) {
+    const story = db.stories[idx];
+    if (story.story_graph) {
+      const g = story.story_graph as BranchingStoryGraph;
+      if (nodeId === g.rootNode.id) {
+        g.rootNode.sceneImages[imageIndex] = url;
+      } else {
+        const leaf = g.leafNodes.find((n) => n.id === nodeId);
+        if (leaf) leaf.sceneImages[imageIndex] = url;
+      }
+      db.stories[idx] = { ...story, story_graph: g };
+      await writeDb(db);
+    }
+  }
+  if (!UUID_RE.test(id)) return;
+  void apiFetch(`/api/stories/${id}/graph-node-image`, {
+    method: "PATCH",
+    body: JSON.stringify({ nodeId, imageIndex, url }),
+  });
 }

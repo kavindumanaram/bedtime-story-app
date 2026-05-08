@@ -4,6 +4,7 @@ import { getFallbackImage, buildReferenceImagePrompt, type StoryContext } from "
 import type { SceneSlot } from "../api/sceneImageApi";
 import { updateStoryImages } from "../api/storyDb";
 import { apiFetch } from "../lib/api";
+import { getDevSettings } from "../lib/devSettings";
 
 type Options = {
   slots: SceneSlot[];
@@ -56,11 +57,12 @@ export function generateSceneImageOnce(
   referenceImage?: string,
   storyId?: string,
   imageIndex?: number,
+  imageModel?: string,
 ): Promise<string> {
   const key = `${prompt}::${referenceImage ?? ""}`;
   const existing = pendingGenerations.get(key);
   if (existing) return existing;
-  const p = generateSceneImage(prompt, referenceImage, storyId, imageIndex)
+  const p = generateSceneImage(prompt, referenceImage, storyId, imageIndex, imageModel)
     .finally(() => pendingGenerations.delete(key));
   pendingGenerations.set(key, p);
   return p;
@@ -92,30 +94,35 @@ export function useProgressiveImages({
   useEffect(() => {
     if (slots.length === 0) return;
 
+    const settings = getDevSettings();
+
+    // Static image mode: skip all API calls and fill every slot with a local fallback immediately.
+    if (settings.useStaticImage) {
+      setImages(Array(paragraphCount).fill(getFallbackImage(theme)));
+      return;
+    }
+
     let aborted = false;
 
     void (async () => {
-      // Step 1: generate canonical reference image — backend generates + uploads, returns URL.
-      let referenceImageUrl: string | undefined;
-      if (storyContext) {
-        try {
-          const url = await generateReferenceImageOnce(storyContext, storyId ?? undefined);
-          if (!aborted) referenceImageUrl = url;
-        } catch (err) {
-          console.warn("Reference image generation failed — using text-only prompts:", err);
-        }
+      // Fire reference image in background only when enabled in dev settings (default: off).
+      if (storyContext && settings.generateReferenceImage) {
+        generateReferenceImageOnce(storyContext, storyId ?? undefined).catch((err: unknown) => {
+          console.warn("Reference image generation failed:", err);
+        });
       }
 
-      // Step 2: generate each scene image sequentially — backend generates + uploads, returns URL.
+      // Generate each scene image sequentially — backend generates + uploads, returns URL.
       for (const slot of slots) {
         if (aborted) break;
 
         try {
           const url = await generateSceneImageOnce(
             slot.prompt,
-            referenceImageUrl,
+            undefined,
             storyId ?? undefined,
             slot.imageIndex,
+            settings.imageModel,
           );
           if (aborted) break;
 

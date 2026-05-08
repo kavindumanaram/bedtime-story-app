@@ -1,10 +1,13 @@
 import { apiFetch } from '../lib/api'
 import type { StoryCharacter, StoryContext } from './sceneImageApi'
+import type { BranchingStoryGraph } from '@bedtime/shared'
 
 export type StoryContent = {
   title: string
   summary: string
   text: string[]
+  is_branching?: boolean
+  story_graph?: BranchingStoryGraph | null
 }
 
 export type ContinuationContext = {
@@ -49,10 +52,11 @@ export async function generateSceneImage(
   referenceImageUrl?: string,
   storyId?: string,
   imageIndex?: number,
+  imageModel?: string,
 ): Promise<string> {
   const { url } = await apiFetch<{ url: string }>('/api/generate/scene-image', {
     method: 'POST',
-    body: JSON.stringify({ prompt, referenceImageUrl, storyId, imageIndex }),
+    body: JSON.stringify({ prompt, referenceImageUrl, storyId, imageIndex, imageModel }),
   })
   return url
 }

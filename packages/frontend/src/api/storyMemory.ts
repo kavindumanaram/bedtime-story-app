@@ -106,6 +106,19 @@ export async function getTopCharacters(childId: string, limit = 2) {
   }
 }
 
+// ── Personality trait tracking ────────────────────────────────
+
+export async function persistChoiceSelection(
+  childId: string,
+  choiceLabel: string,
+  trait: "brave" | "kind" | "curious" | "creative" | "helpful",
+): Promise<void> {
+  void apiFetch(`/api/memory/${childId}/trait`, {
+    method: "POST",
+    body: JSON.stringify({ trait, choiceLabel }),
+  }).catch(() => {});
+}
+
 // ── Dashboard statistics ──────────────────────────────────────
 
 export type DashboardStats = {

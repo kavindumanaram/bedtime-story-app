@@ -178,6 +178,12 @@ api.patch('/stories/:id/character-context', async (c) => {
   return c.json({ ok: true })
 })
 
+api.patch('/stories/:id/graph-node-image', async (c) => {
+  const { nodeId, imageIndex, url } = await c.req.json<{ nodeId: string; imageIndex: number; url: string }>()
+  await db.updateGraphNodeImage(c.req.param('id'), nodeId, imageIndex, url, c.get('userId'))
+  return c.json({ ok: true })
+})
+
 // Daily story
 api.get('/daily-story', async (c) => {
   const { childId, date } = c.req.query()
@@ -237,6 +243,12 @@ api.post('/memory/:childId', async (c) => {
   return c.json({ ok: true })
 })
 
+api.post('/memory/:childId/trait', async (c) => {
+  const { trait } = await c.req.json<{ trait: string; choiceLabel?: string }>()
+  try { await db.appendTrait(c.req.param('childId'), c.get('userId'), trait) } catch { /* best effort */ }
+  return c.body(null, 204)
+})
+
 // Characters
 api.get('/characters/:childId', async (c) => {
   const limit = Number(c.req.query('limit') ?? 5)
@@ -287,8 +299,21 @@ api.post('/generate/story', async (c) => {
       }
     }
   }>()
-  const story = await openai.generateStory(childName, age, theme, options)
-  return c.json(story)
+
+  // Continuation stories stay linear; new stories get the branching structure
+  if (options?.continuation) {
+    const story = await openai.generateStory(childName, age, theme, options)
+    return c.json(story)
+  }
+
+  const branching = await openai.generateBranchingStory(childName, age, theme, options)
+  return c.json({
+    title: branching.title,
+    summary: branching.summary,
+    text: branching.story_graph.rootNode.paragraphs,
+    is_branching: true,
+    story_graph: branching.story_graph,
+  })
 })
 
 api.post('/generate/cover-image', async (c) => {
@@ -309,13 +334,14 @@ api.post('/generate/scene-image', async (c) => {
     storyId?: string
     imageIndex?: number
     referenceImageUrl?: string
+    imageModel?: string
   }>()
 
   const prompt = (body.characterProfile && body.nodeText && body.environmentStyle)
     ? buildScenePrompt(body.characterProfile, body.nodeText, body.environmentStyle, body.choiceMade)
     : (body.prompt ?? '')
 
-  const url = await openai.generateSceneImage(prompt, body.storyId, body.imageIndex, body.referenceImageUrl)
+  const url = await openai.generateSceneImage(prompt, body.storyId, body.imageIndex, body.referenceImageUrl, body.imageModel)
   return c.json({ url })
 })
 
