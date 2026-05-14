@@ -34,6 +34,8 @@ interface AudioControlsProps {
   progress: number;
   currentSpeed: number;
   currentVoice: string;
+  /** Renders as a compact frosted-glass bar overlaid on the player */
+  floating?: boolean;
 }
 
 export const AudioControls: React.FC<AudioControlsProps> = ({
@@ -48,9 +50,65 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   progress,
   currentSpeed,
   currentVoice,
+  floating = false,
 }) => {
   const isBusy = isLoading || isPlaying;
 
+  if (floating) {
+    return (
+      <div className="bg-black/60 backdrop-blur-sm px-4 py-3 flex items-center gap-3 border-t border-white/10">
+        {/* Play/Pause */}
+        <button
+          onClick={isBusy ? onPause : onPlay}
+          aria-label={isPlaying ? "Pause narration" : "Play narration"}
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-white flex-shrink-0 transition-all duration-200 bg-white/20 hover:bg-white/30 ${
+            isBusy ? "ring-2 ring-white/40" : ""
+          }`}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="w-4 h-4" />
+          ) : (
+            <Play className="w-4 h-4 ml-0.5" />
+          )}
+        </button>
+
+        {/* Progress track + label */}
+        <div className="flex-1 min-w-0">
+          <div className="h-1 bg-white/20 rounded-full overflow-hidden mb-1">
+            <div
+              className="h-full bg-white/70 rounded-full transition-all duration-300"
+              style={{ width: `${isPlaying ? progress : 0}%` }}
+            />
+          </div>
+          <p className="text-white/50 text-xs truncate">
+            {isLoading ? "Starting…" : isPlaying ? "Reading aloud…" : "Tap to listen"}{" "}
+            <span className="text-white/30">{duration}</span>
+          </p>
+        </div>
+
+        {/* Speed chips */}
+        <div className="flex gap-1 flex-shrink-0">
+          {SPEEDS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => onSpeedChange(value)}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all duration-150 ${
+                currentSpeed === value
+                  ? "bg-white/30 text-white"
+                  : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Default mode — white card
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
       {/* Play row: button + progress */}

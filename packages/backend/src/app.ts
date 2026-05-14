@@ -9,6 +9,7 @@ import * as db from './services/dbService.js'
 import * as openai from './services/openaiService.js'
 import { buildScenePrompt } from './services/promptBuilderService.js'
 import type { StoryCharacter, StoryContext } from './services/openaiService.js'
+import { getCommunityStories } from './data/communityStories.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname_local = dirname(__filename)
@@ -160,6 +161,11 @@ api.get('/stories/:id', async (c) => {
   return c.json(story)
 })
 
+api.delete('/stories/:id', async (c) => {
+  await db.deleteStory(c.req.param('id'), c.get('userId'))
+  return c.body(null, 204)
+})
+
 api.patch('/stories/:id/cover-url', async (c) => {
   const { url } = await c.req.json<{ url: string }>()
   await db.updateStoryCoverUrl(c.req.param('id'), url, c.get('userId'))
@@ -293,6 +299,7 @@ api.post('/generate/story', async (c) => {
     options?: {
       tone?: string
       length?: 'short' | 'medium' | 'long'
+      narrative?: boolean
       continuation?: {
         lastTitle: string; lastSummary: string; lastEnding: string
         favoriteThemes: string[]; recurringCharacters: string[]; episodeNum: number
@@ -300,8 +307,8 @@ api.post('/generate/story', async (c) => {
     }
   }>()
 
-  // Continuation stories stay linear; new stories get the branching structure
-  if (options?.continuation) {
+  // Linear story: continuation flow or explicit narrative mode
+  if (options?.continuation || options?.narrative) {
     const story = await openai.generateStory(childName, age, theme, options)
     return c.json(story)
   }
@@ -366,6 +373,14 @@ api.post('/series/resolve', async (c) => {
   }>()
   const result = await db.resolveOrCreateSeries(storyId, childId, c.get('userId'), title)
   return c.json(result)
+})
+
+// ── Public community stories route (no auth required) ────────────────────────
+
+app.get('/api/community/stories', (c) => {
+  const region = c.req.query('region') || undefined
+  const limit = Math.min(Number(c.req.query('limit') ?? 10), 20)
+  return c.json(getCommunityStories(region, limit))
 })
 
 app.route('/api', api)

@@ -135,6 +135,20 @@ export interface DashboardStats {
   favoriteTheme: string | null
 }
 
+export interface CommunityStory {
+  id: string
+  title: string
+  summary: string
+  theme: string
+  coverGradient: string
+  viewCount: number
+  communityRank: number
+  region?: string
+  tags: string[]
+  ageMin: number
+  ageMax: number
+}
+
 export interface StoryNode {
   id: string
   title: string

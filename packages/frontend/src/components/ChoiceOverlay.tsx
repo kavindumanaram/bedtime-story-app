@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { motion } from "framer-motion"
+import { Shield, Heart, Zap, Sparkles, Star } from "lucide-react"
 import type { StoryChoice } from "@bedtime/shared"
 import { VOICE_PROFILES } from "./AudioControls"
 
@@ -8,6 +10,14 @@ type Props = {
   ttsVoice?: string
   ttsSpeed?: number
   onSelect: (choice: StoryChoice) => void
+}
+
+const TRAIT_ICONS: Record<StoryChoice["trait"], React.FC<{ className?: string }>> = {
+  brave:    Shield,
+  kind:     Heart,
+  curious:  Zap,
+  creative: Sparkles,
+  helpful:  Star,
 }
 
 export function ChoiceOverlay({ choices, childName, ttsVoice, ttsSpeed, onSelect }: Props) {
@@ -63,34 +73,45 @@ export function ChoiceOverlay({ choices, childName, ttsVoice, ttsSpeed, onSelect
   }, [])
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.85)" }}
+      style={{ background: "rgba(15,23,42,0.92)" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
     >
       <p className="text-white text-xl font-semibold mb-2">
         What should {childName ?? "the hero"} do?
       </p>
       <p className="text-white/60 text-sm mb-8">Choosing in {secondsLeft}s…</p>
       <div className="flex flex-col gap-4 w-full max-w-sm px-6">
-        {choices.map((choice, i) => (
-          <button
-            key={i}
-            disabled={isLocked}
-            onClick={() => {
-              console.log("[ChoiceOverlay] User selected:", { label: choice.label, trait: choice.trait, isLocked })
-              onSelect(choice)
-            }}
-            className={`min-h-[80px] rounded-2xl px-6 py-4 text-white font-semibold text-base animate-pulse transition-all ${
-              isLocked
-                ? "bg-white/20 opacity-50 cursor-not-allowed"
-                : "bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
-            }`}
-          >
-            <span className="block text-lg">{choice.label}</span>
-            <span className="block text-sm text-white/70 mt-1">{choice.preview_text}</span>
-          </button>
-        ))}
+        {choices.map((choice, i) => {
+          const TraitIcon = TRAIT_ICONS[choice.trait] ?? Star
+          return (
+            <button
+              key={i}
+              disabled={isLocked}
+              onClick={() => {
+                console.log("[ChoiceOverlay] User selected:", { label: choice.label, trait: choice.trait, isLocked })
+                onSelect(choice)
+              }}
+              className={`min-h-[80px] rounded-2xl px-6 py-4 text-white font-semibold text-base transition-all duration-200 ${
+                isLocked
+                  ? "bg-white/10 opacity-60 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] cursor-pointer shadow-lg shadow-indigo-900/40"
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <TraitIcon className={`w-6 h-6 flex-shrink-0 ${isLocked ? "text-white/40" : "text-indigo-200"}`} />
+                <span className="text-left">
+                  <span className="block text-lg">{choice.label}</span>
+                  <span className="block text-sm text-white/70 mt-0.5">{choice.preview_text}</span>
+                </span>
+              </span>
+            </button>
+          )
+        })}
       </div>
-    </div>
+    </motion.div>
   )
 }

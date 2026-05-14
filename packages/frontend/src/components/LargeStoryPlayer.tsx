@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,10 @@ type Props = {
    * User-initiated navigation still works normally and fires onPageChange.
    */
   pageIndex?: number;
+  /** Apply a 10% sleep-down brightness when the story has reached a leaf node */
+  isLeafScene?: boolean;
+  /** When true, pushes the subtitle up to avoid the floating AudioControls bar */
+  floatingControls?: boolean;
 };
 
 const TINTS = [
@@ -63,13 +68,12 @@ export default function LargeStoryPlayer({
   onSettingsClick,
   nextPageGuardCount = 0,
   pageIndex,
+  isLeafScene = false,
+  floatingControls = false,
 }: Props) {
   const [index, setIndex] = useState(initialIndex);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [pageTransition, setPageTransition] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [direction, setDirection] = useState<"left" | "right">("right");
-  const [textKey, setTextKey] = useState(0);
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -130,18 +134,9 @@ export default function LargeStoryPlayer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (pageIndex === undefined || pageIndex === index) return;
-    setDirection(pageIndex > index ? "right" : "left");
     setIndex(pageIndex);
-    setTextKey((k) => k + 1);
     // Don't call onPageChange here — this is externally driven, not user-initiated
   }, [pageIndex]);
-
-  // Page transition trigger
-  useEffect(() => {
-    setPageTransition(true);
-    const timer = setTimeout(() => setPageTransition(false), 300);
-    return () => clearTimeout(timer);
-  }, [index]);
 
   // Cleanup on unmount — only exit fullscreen if WE entered it, so intro overlays
   // and StrictMode re-mounts don't steal or exit another component's fullscreen session.
@@ -217,9 +212,7 @@ export default function LargeStoryPlayer({
   };
 
   const goTo = (newIndex: number) => {
-    setDirection(newIndex > index ? "right" : "left");
     setIndex(newIndex);
-    setTextKey((k) => k + 1);
     onPageChange?.(newIndex);
   };
 
@@ -231,8 +224,6 @@ export default function LargeStoryPlayer({
     setSparkles((prev) => [...prev, { id, x, y }]);
     setTimeout(() => setSparkles((prev) => prev.filter((s) => s.id !== id)), 700);
   };
-
-  const slideX = pageTransition ? (direction === "right" ? "-6px" : "6px") : "0px";
 
   const glassBtn =
     "w-11 h-11 rounded-full flex items-center justify-center shadow-lg bg-white/20 backdrop-blur-sm border border-white/20 text-white hover:bg-white/30 transition-all duration-200";
@@ -260,7 +251,7 @@ export default function LargeStoryPlayer({
       `}</style>
       <div
         ref={containerRef}
-        className={`w-full rounded-lg overflow-hidden bg-black ${isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""}`}
+        className={`w-full rounded-lg overflow-hidden bg-black transition-all duration-1000 ${isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""} ${isLeafScene ? "brightness-[0.9]" : ""}`}
       >
         <div
           className="relative w-full overflow-hidden"
@@ -273,42 +264,49 @@ export default function LargeStoryPlayer({
             style={{ opacity: isDimmed ? 0.72 : 0 }}
           />
 
-          {/* Image or shimmer with direction-aware transition */}
+          {/* Image or shimmer with cross-fade transition */}
+          {/* Mouse-parallax wrapper persists across page changes so the ref stays stable */}
           <div
-            className="absolute inset-0 transition-all duration-300"
-            style={{
-              opacity: pageTransition ? 0.4 : 1,
-              transform: `scale(${pageTransition ? 0.97 : 1}) translateX(${slideX})`,
-            }}
+            ref={parallaxRef}
+            className="absolute inset-0"
+            style={{ transition: "transform 0.15s linear" }}
           >
-            {/* Mouse-parallax translate wrapper — DOM-mutated directly so no React re-render on mousemove */}
-            <div
-              ref={parallaxRef}
-              className="absolute inset-0"
-              style={{ transition: "transform 0.15s linear" }}
-            >
+            <AnimatePresence mode="sync">
               {isShimmering ? (
-                <div className="w-full h-full bg-gradient-to-br from-gray-800 via-gray-700 to-gray-800 animate-pulse flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-full border-2 border-white/30 border-t-white/80 animate-spin" />
-                </div>
+                <motion.div
+                  key={`shimmer-${index}`}
+                  className="absolute inset-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  <div className="w-full h-full bg-gradient-to-br from-gray-800 via-gray-700 to-gray-800 animate-pulse flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full border-2 border-white/30 border-t-white/80 animate-spin" />
+                  </div>
+                </motion.div>
               ) : (
-                <img
-                  key={index}
+                <motion.img
+                  key={`img-${index}`}
                   ref={imgRef}
                   src={img}
                   alt={`page-${index + 1}`}
-                  className={`w-full h-full object-cover ${tintEffect.class}`}
+                  className={`absolute inset-0 w-full h-full object-cover ${tintEffect.class}`}
                   style={{
                     filter: "brightness(0.75)",
                     animation: "kenBurns 12s ease-in-out infinite",
                   }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
                       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect fill='%23000000' width='1200' height='800'/%3E%3C/svg%3E";
                   }}
                 />
               )}
-            </div>
+            </AnimatePresence>
           </div>
 
           {/* Sparkle tap effects */}
@@ -334,9 +332,9 @@ export default function LargeStoryPlayer({
           )}
 
           {/* Subtitle */}
-          <div className="absolute left-0 right-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/50 to-transparent z-20">
+          <div className={`absolute left-0 right-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent z-20 px-6 pt-8 ${floatingControls ? "pb-20" : "pb-6"}`}>
             <p
-              key={textKey}
+              key={index}
               className="max-w-2xl mx-auto text-white font-bold text-xl text-center leading-relaxed drop-shadow-lg"
               style={{ animation: "fadeSlideUp 0.4s ease-out both" }}
             >

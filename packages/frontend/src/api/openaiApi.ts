@@ -26,6 +26,7 @@ export async function generateStory(
   options?: {
     tone?: string
     length?: 'short' | 'medium' | 'long'
+    narrative?: boolean
     continuation?: ContinuationContext
   },
 ): Promise<StoryContent> {

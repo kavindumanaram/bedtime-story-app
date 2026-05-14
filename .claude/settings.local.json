@@ -8,7 +8,25 @@
       "Bash(findstr \"CinematicIntro\")",
       "Bash(npx node *)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\repos\\\\bedtime-story-app\" -Force | ForEach-Object { if\\($_.PSIsContainer\\) { \"$\\($_.Name\\)/\" } else { $_.Name } } | Sort-Object)",
-      "PowerShell(Test-Path *)"
+      "PowerShell(Test-Path *)",
+      "Bash(pnpm test:run)",
+      "Bash(Get-ChildItem -Path \"D:\\\\repos\\\\bedtime-story-app\" -Recurse -Filter \"*.sql\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(Receive-Job *)",
+      "PowerShell(\\(Get-Content D:\\\\repos\\\\bedtime-story-app\\\\package.json -Raw | ConvertFrom-Json\\).scripts | Format-List)",
+      "PowerShell(netstat *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(pnpm *)",
+      "Bash(node *)",
+      "Bash(kill %1)",
+      "Bash(curl -s http://localhost:3000/api/auth/me)",
+      "Bash(Get-Content \"C:\\\\Users\\\\ASUS\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--repos-bedtime-story-app\\\\f5edb9db-71e5-41d3-80b5-16f393b40ac7\\\\tasks\\\\b1v2q2ly7.output\" -Wait -Tail 60)",
+      "Bash(Select-Object -First 80)",
+      "Bash(./node_modules/.bin/tsc --project packages/backend/tsconfig.json --noEmit)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000 \")",
+      "Read(//mnt/c/Users/ASUS/AppData/Local/Temp/claude/D--repos-bedtime-story-app/9d0a0920-1fe7-414d-aef2-aee8661567c3/tasks/**)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

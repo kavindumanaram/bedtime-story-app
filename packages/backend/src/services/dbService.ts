@@ -151,6 +151,10 @@ export async function getStory(id: string, userId: string): Promise<DbStory | nu
   return s ? mapStory(s) : null
 }
 
+export async function deleteStory(id: string, userId: string): Promise<void> {
+  await prisma.story.deleteMany({ where: { id, parentId: userId } })
+}
+
 export async function createStory(
   userId: string,
   data: {

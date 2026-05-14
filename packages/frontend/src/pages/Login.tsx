@@ -35,7 +35,7 @@ export const Login: React.FC = () => {
           throw new Error((body as { error?: string }).error ?? "Signup failed");
         }
         await reloadSession();
-        navigate("/dashboard");
+        navigate("/profiles");
       } else {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -48,7 +48,7 @@ export const Login: React.FC = () => {
           throw new Error((body as { error?: string }).error ?? "Invalid credentials");
         }
         await reloadSession();
-        navigate("/dashboard");
+        navigate("/profiles");
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -61,35 +61,83 @@ export const Login: React.FC = () => {
     window.location.href = "/api/auth/oauth/google";
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+  const KEYFRAMES = `
+    @keyframes floatStar {
+      0%,100% { transform: translateY(0px) rotate(-5deg); }
+      50%      { transform: translateY(-20px) rotate(5deg); }
+    }
+    @keyframes twinkle {
+      0%,100% { opacity: 0.15; transform: scale(0.7); }
+      50%      { opacity: 0.8; transform: scale(1.2); }
+    }
+  `
 
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg,#0f0e23,#1a1535,#0d1117)' }}>
+      <style>{KEYFRAMES}</style>
+
+      {/* Glow orbs */}
+      <div style={{ position:'absolute', top:'-10%', right:'-5%', width:400, height:400, borderRadius:'50%',
+        background:'radial-gradient(circle,rgba(124,58,237,0.35) 0%,transparent 70%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', bottom:'-10%', left:'-5%', width:350, height:350, borderRadius:'50%',
+        background:'radial-gradient(circle,rgba(6,182,212,0.25) 0%,transparent 70%)', pointerEvents:'none' }} />
+
+      {/* Floating emoji decorations */}
+      {[
+        { ch:'🌙', top:'8%',  left:'6%',  size:42, dur:'7s',  delay:'0s'   },
+        { ch:'⭐', top:'15%', right:'8%', size:28, dur:'9s',  delay:'1.5s' },
+        { ch:'✨', top:'70%', left:'4%',  size:22, dur:'6s',  delay:'0.8s' },
+        { ch:'🏰', top:'75%', right:'6%', size:36, dur:'8s',  delay:'2s'   },
+        { ch:'💫', top:'40%', left:'2%',  size:18, dur:'5.5s',delay:'1s'   },
+      ].map((d, i) => (
+        <div key={i} style={{
+          position:'absolute', top: d.top, left: (d as {left?:string}).left, right: (d as {right?:string}).right,
+          fontSize: d.size, pointerEvents:'none', userSelect:'none',
+          animation:`floatStar ${d.dur} ease-in-out ${d.delay} infinite`,
+          opacity:0.6,
+        }}>{d.ch}</div>
+      ))}
+
+      {/* Twinkle dots */}
+      {[0,1,2,3,4,5].map(i => (
+        <div key={i} style={{
+          position:'absolute',
+          top:`${12 + i * 13}%`, left:`${8 + ((i*17)%80)}%`,
+          width:3, height:3, borderRadius:'50%', background:'#c4b5fd',
+          animation:`twinkle ${1.5 + i*0.4}s ease-in-out ${i*0.4}s infinite`,
+          pointerEvents:'none',
+        }} />
+      ))}
+
+      <div className="w-full max-w-md relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <Moon className="w-8 h-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
+            style={{ background:'rgba(245,183,49,0.15)', border:'1.5px solid rgba(245,183,49,0.3)' }}>
+            <Moon className="w-8 h-8" style={{ color:'#F5B731' }} />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            <span className="text-primary">Hush</span>Tales
+          <h1 className="text-3xl font-black text-white" style={{ letterSpacing:'-0.02em' }}>
+            <span style={{ color:'#F5B731' }}>Hush</span>Tales
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">Personalised bedtime stories for your little ones</p>
+          <p className="text-white/50 mt-1 text-sm">Personalised bedtime stories for your little ones</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        <div className="rounded-3xl p-8"
+          style={{ background:'rgba(255,255,255,0.07)', backdropFilter:'blur(24px)', border:'1.5px solid rgba(255,255,255,0.12)' }}>
 
           {/* Tabs */}
-          <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
+          <div className="flex rounded-xl p-1 mb-6" style={{ background:'rgba(0,0,0,0.3)' }}>
             {(["signin", "signup"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setError(null); setSuccess(null); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  tab === t
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                style={tab === t
+                  ? { background:'linear-gradient(135deg,#7c3aed,#06b6d4)', color:'#fff' }
+                  : { color:'rgba(255,255,255,0.45)' }
+                }
               >
                 {t === "signin" ? "Sign In" : "Create Account"}
               </button>
@@ -100,7 +148,8 @@ export const Login: React.FC = () => {
           <button
             onClick={handleGoogle}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors mb-4"
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors mb-4"
+            style={{ background:'rgba(255,255,255,0.1)', border:'1.5px solid rgba(255,255,255,0.18)', color:'#fff' }}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -112,46 +161,44 @@ export const Login: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400">or</span>
-            <div className="flex-1 h-px bg-gray-200" />
+            <div className="flex-1 h-px" style={{ background:'rgba(255,255,255,0.15)' }} />
+            <span className="text-xs" style={{ color:'rgba(255,255,255,0.35)' }}>or</span>
+            <div className="flex-1 h-px" style={{ background:'rgba(255,255,255,0.15)' }} />
           </div>
 
-          {/* Email / password form */}
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color:'rgba(255,255,255,0.45)' }}>Email</span>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color:'rgba(255,255,255,0.35)' }} />
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
                   placeholder="parent@email.com"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-white/30 outline-none transition-all"
+                  style={{ background:'rgba(255,255,255,0.08)', border:'1.5px solid rgba(255,255,255,0.15)' }}
+                  onFocus={e => e.currentTarget.style.borderColor = 'rgba(124,58,237,0.7)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'}
                 />
               </div>
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Password</span>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color:'rgba(255,255,255,0.45)' }}>Password</span>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color:'rgba(255,255,255,0.35)' }} />
                 <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
+                  type={showPassword ? "text" : "password"} value={password}
+                  onChange={(e) => setPassword(e.target.value)} required minLength={6}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl text-sm text-white placeholder-white/30 outline-none transition-all"
+                  style={{ background:'rgba(255,255,255,0.08)', border:'1.5px solid rgba(255,255,255,0.15)' }}
+                  onFocus={e => e.currentTarget.style.borderColor = 'rgba(124,58,237,0.7)'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
+                <button type="button" onClick={() => setShowPassword(s => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color:'rgba(255,255,255,0.35)' }}>
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -159,38 +206,33 @@ export const Login: React.FC = () => {
 
             {tab === "signin" && (
               <div className="text-right">
-                <button type="button" className="text-xs text-primary hover:text-primary-dark transition-colors">
+                <button type="button" className="text-xs transition-colors"
+                  style={{ color:'rgba(124,58,237,0.8)' }}>
                   Forgot password?
                 </button>
               </div>
             )}
 
             {error && (
-              <p className="text-sm text-red-500 bg-red-50 px-4 py-3 rounded-xl">{error}</p>
+              <p className="text-sm px-4 py-3 rounded-xl" style={{ color:'#fca5a5', background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)' }}>{error}</p>
             )}
             {success && (
-              <p className="text-sm text-green-700 bg-green-50 px-4 py-3 rounded-xl">{success}</p>
+              <p className="text-sm px-4 py-3 rounded-xl" style={{ color:'#86efac', background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.3)' }}>{success}</p>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl bg-primary hover:bg-primary-dark disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold transition-colors shadow-sm"
-            >
-              {loading
-                ? "Please wait..."
-                : tab === "signin"
-                  ? "Sign In"
-                  : "Create Account"}
+            <button type="submit" disabled={loading}
+              className="w-full py-3 rounded-xl font-bold text-white transition-all disabled:opacity-50"
+              style={{ background:'linear-gradient(135deg,#7c3aed,#06b6d4)', boxShadow:'0 8px 24px rgba(124,58,237,0.4)' }}>
+              {loading ? "Please wait…" : tab === "signin" ? "Sign In" : "Create Account"}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs mt-6" style={{ color:'rgba(255,255,255,0.25)' }}>
           By continuing you agree to our{" "}
-          <a href="#" className="underline hover:text-gray-600">Terms of Service</a>{" "}
+          <a href="#" className="underline hover:text-white/50">Terms of Service</a>{" "}
           and{" "}
-          <a href="#" className="underline hover:text-gray-600">Privacy Policy</a>
+          <a href="#" className="underline hover:text-white/50">Privacy Policy</a>
         </p>
       </div>
     </div>

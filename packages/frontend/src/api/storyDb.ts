@@ -89,6 +89,15 @@ export async function updateStoryImages(
   await writeDb(db);
 }
 
+export async function deleteStory(id: string): Promise<void> {
+  const db = await readDb();
+  db.stories = db.stories.filter(s => s.id !== id);
+  await writeDb(db);
+  if (UUID_RE.test(id)) {
+    void apiFetch(`/api/stories/${id}`, { method: 'DELETE' });
+  }
+}
+
 export async function updateGraphNodeImage(
   id: string,
   nodeId: string,
