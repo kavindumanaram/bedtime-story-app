@@ -16,6 +16,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       headers: { 'Content-Type': 'application/json', ...init?.headers },
     })
     if (!retry.ok) throw new Error(await retry.text())
+    if (retry.status === 204) return undefined as T
     return retry.json() as Promise<T>
   }
 
@@ -24,5 +25,6 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     throw new Error((body as { error: string }).error ?? res.statusText)
   }
 
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
