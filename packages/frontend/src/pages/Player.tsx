@@ -22,6 +22,7 @@ import type { FeedbackReaction, BranchingStoryGraph, GraphNode, StoryChoice } fr
 import { apiFetch } from "../lib/api";
 import { getDevSettings } from "../lib/devSettings";
 import { ChoiceOverlay } from "../components/ChoiceOverlay";
+import { Spinner1 } from "../components/Spinner1";
 
 const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className?: string }>; label: string }[] = [
   { reaction: "loved",          icon: Heart,          label: "Loved it" },
@@ -31,9 +32,9 @@ const FEEDBACK_OPTIONS: { reaction: FeedbackReaction; icon: React.FC<{ className
   { reaction: "more_adventure", icon: Mountain,       label: "More adventure" },
 ];
 
-type RitualPhase = "preparation" | "intro" | "player";
+type RitualPhase = "loading" | "preparation" | "intro" | "player";
 
-type RouterState = {
+export type PlayerRouterState = {
   slots?: SceneSlot[];
   storyContext?: StoryContext;
   paragraphCount?: number;
@@ -42,13 +43,20 @@ type RouterState = {
   theme?: string;
 };
 
-export const Player: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+type RouterState = PlayerRouterState;
+
+export const Player: React.FC<{
+  overlayId?: string;
+  overlayState?: PlayerRouterState;
+  overlayMode?: boolean;
+}> = ({ overlayId, overlayState, overlayMode = false }) => {
+  const { id: paramId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { activeChild, profile } = useAuth();
 
-  const routerState = (location.state ?? {}) as RouterState;
+  const id = overlayId ?? paramId;
+  const routerState = overlayState ?? ((location.state ?? {}) as RouterState);
   const devSettings = getDevSettings();
 
   const knownMock = stories.find((s) => s.id === id);
@@ -60,7 +68,7 @@ export const Player: React.FC = () => {
   const [isDimmed, setIsDimmed] = useState(false);
   const isNewStory = !!(routerState.childName && routerState.storyTitle);
   const [ritualPhase, setRitualPhase] = useState<RitualPhase>(
-    isNewStory && devSettings.cinematicIntroEnabled ? "preparation" : "player",
+    isNewStory && devSettings.cinematicIntroEnabled ? "loading" : "player",
   );
   const [showOldIntro, setShowOldIntro] = useState(false);
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -185,11 +193,18 @@ export const Player: React.FC = () => {
     if (!isNewStory) return;
     const t = setTimeout(() => {
       setMaxWaitElapsed(true);
-      setRitualPhase((p) => p !== "player" ? "player" : p);
+      setRitualPhase((p) => p !== "player" ? "preparation" : p);
     }, MAX_WAIT_MS);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Spinner loading phase → preparation once images are ready (or skipped)
+  useEffect(() => {
+    if (ritualPhase === "loading" && readyToAdvance) {
+      setRitualPhase("preparation");
+    }
+  }, [ritualPhase, readyToAdvance]);
 
   // Old stories: show brief CinematicIntro once loading finishes (unless disabled in dev settings)
   useEffect(() => {
@@ -354,6 +369,7 @@ export const Player: React.FC = () => {
   // On a branching story: last page of root node shows the choice overlay, not the feedback footer
   const isChoicePoint = isLastPage && isBranching && storyGraph !== null && activeNodeId === storyGraph.rootNode.id;
   const isRealLastPage = isLastPage && !isChoicePoint;
+  const isLeafScene = activeNode?.type === "leaf";
 
   useEffect(() => {
     if (isRealLastPage && !streakUpdated && activeChild && profile) {
@@ -468,43 +484,18 @@ export const Player: React.FC = () => {
   const ttsDuration = `${Math.floor(ttsDurationSecs / 60)}:${String(ttsDurationSecs % 60).padStart(2, "0")}`;
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-4 lg:px-8 py-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Library
-          </button>
-        </div>
-        <div className="px-4 lg:px-8 pb-10 space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="aspect-[4/3] sm:aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
-              <Sparkles className="w-10 h-10 text-gray-300 animate-spin [animation-duration:3s]" />
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
-            <div className="h-7 bg-gray-200 animate-pulse rounded-lg w-2/3" />
-            <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-full" />
-            <div className="h-4 bg-gray-100 animate-pulse rounded-lg w-4/5" />
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-            <div className="h-4 bg-gray-200 animate-pulse rounded w-24" />
-            <div className="space-y-2 min-h-[100px]">
-              <div className="h-4 bg-gray-100 animate-pulse rounded w-full" />
-              <div className="h-4 bg-gray-100 animate-pulse rounded w-full" />
-              <div className="h-4 bg-gray-100 animate-pulse rounded w-3/4" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <Spinner1 dark message="Loading your story…" />;
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-700 ${isDimmed ? "bg-gray-950" : "bg-gray-50"}`}>
+    <div className={`min-h-screen transition-colors duration-700 ${
+      overlayMode ? "bg-transparent" : (isDimmed ? "bg-gray-950" : "bg-gray-50")
+    }`}>
+      {/* Phase 0: Spinner — shown while images are generating (up to 2 min) */}
+      {ritualPhase === "loading" && (
+        <Spinner1 dark message="Getting your story ready…" />
+      )}
+
       {/* Phase 1: Bedtime preparation — waits for readyToAdvance AND minDurationMs */}
       {ritualPhase === "preparation" && (
         <BedtimePreparationScreen
@@ -544,32 +535,36 @@ export const Player: React.FC = () => {
         />
       )}
 
-      {/* Back nav */}
-      <div
-        className={`px-4 lg:px-8 py-4 flex items-center justify-between transition-opacity duration-500 ${
-          isDimmed ? "opacity-0 pointer-events-none" : ""
-        }`}
-      >
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+      {/* Back nav — hidden in overlay mode (back button is provided by the overlay wrapper) */}
+      {!overlayMode && (
+        <div
+          className={`px-4 lg:px-8 py-4 flex items-center justify-between transition-opacity duration-500 ${
+            isDimmed ? "opacity-0 pointer-events-none" : ""
+          }`}
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Library
-        </button>
-        <button
-          onClick={() => navigate("/create")}
-          className="flex items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium transition-colors"
-        >
-          <Sparkles className="w-4 h-4" />
-          Create New Story
-        </button>
-      </div>
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Library
+          </button>
+          <button
+            onClick={() => navigate("/create")}
+            className="flex items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            Create New Story
+          </button>
+        </div>
+      )}
+      {/* Spacer so content clears the fixed back button in overlay mode */}
+      {overlayMode && <div className="h-16" />}
 
       <div className="px-4 lg:px-8 pb-10 space-y-4">
-        {/* Carousel + overlays */}
+        {/* Carousel + floating AudioControls + overlays */}
         <div className="relative">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="relative bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <LargeStoryPlayer
               pages={carouselPages}
               subtitles={narratableText}
@@ -580,7 +575,27 @@ export const Player: React.FC = () => {
               onToggleDim={() => setIsDimmed((d) => !d)}
               onSettingsClick={() => setShowSettings((s) => !s)}
               nextPageGuardCount={userSkipped ? 0 : (sceneSlots.length > 0 ? MIN_READY_IMAGES : 0)}
+              isLeafScene={isLeafScene}
+              floatingControls={hasParagraphs}
             />
+            {hasParagraphs && (
+              <div className="absolute bottom-0 left-0 right-0 z-30">
+                <AudioControls
+                  isPlaying={isTTSPlaying}
+                  isLoading={isTTSLoading}
+                  hasVoices={availableVoices.length > 0}
+                  onPlay={() => speakParagraph(narratableText[textPage])}
+                  onPause={stopTTS}
+                  onSpeedChange={handleSpeedChange}
+                  onVoiceChange={handleVoiceChange}
+                  progress={ttsProgress}
+                  currentSpeed={ttsSpeed}
+                  currentVoice={ttsVoice}
+                  duration={ttsDuration}
+                  floating
+                />
+              </div>
+            )}
           </div>
 
           {/* Play prompt — appears for 5 s after intro closes */}
@@ -675,23 +690,6 @@ export const Player: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* Audio controls */}
-        {hasParagraphs && (
-          <AudioControls
-            isPlaying={isTTSPlaying}
-            isLoading={isTTSLoading}
-            hasVoices={availableVoices.length > 0}
-            onPlay={() => speakParagraph(narratableText[textPage])}
-            onPause={stopTTS}
-            onSpeedChange={handleSpeedChange}
-            onVoiceChange={handleVoiceChange}
-            progress={ttsProgress}
-            currentSpeed={ttsSpeed}
-            currentVoice={ttsVoice}
-            duration={ttsDuration}
-          />
-        )}
 
         {/* Title + meta */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">

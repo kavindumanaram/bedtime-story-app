@@ -55,24 +55,33 @@ The OpenAI API key lives exclusively on the backend. `VITE_OPENAI_API_KEY` no lo
 
 Routes `/login` and `/onboarding` are public. All others are wrapped in `AuthGuard`.
 
-| Route         | Page       | Purpose                                                                    |
-| ------------- | ---------- | -------------------------------------------------------------------------- |
-| `/login`      | Login      | Sign in / create account (email+password, Google OAuth)                    |
-| `/onboarding` | Onboarding | GDPR consent + add first child (shown once after sign-up)                  |
-| `/dashboard`  | Dashboard  | KPIs, Tonight's Story card, Continue card, charts                          |
-| `/library`    | Library    | Card grid of stories; per-child filter pills; navigates to Player on click |
-| `/create`     | Create     | Story generation with mode selector (New / Continue / Character)           |
-| `/player/:id` | Player     | Full-screen story player with feedback footer; sidebar hidden              |
-| `/billing`    | Billing    | Free / Basic / Premium plan cards, invoice history                         |
-| `/settings`   | Settings   | Notification, playback, appearance (theme) prefs                           |
-| `/profile`    | Profile    | Parent info, full children CRUD with preferences UI                        |
+| Route         | Page       | Purpose                                                                         |
+| ------------- | ---------- | ------------------------------------------------------------------------------- |
+| `/login`      | Login      | Sign in / create account (email+password, Google OAuth)                         |
+| `/onboarding` | Onboarding | GDPR consent + add first child (shown once after sign-up)                       |
+| `/`           | Index2     | Home feed — hero story + user stories grid + community stories                  |
+| `/library`    | Library    | Card grid of stories; per-child filter pills; opens overlay player on click     |
+| `/create`     | Create     | Story generation with mode selector (New / Continue / Character)                |
+| `/player/:id` | Player     | Full-screen story player (direct URL access only — sidebar hidden)              |
+| `/billing`    | Billing    | Free / Basic / Premium plan cards, invoice history                              |
+| `/settings`   | Settings   | Notification, playback, appearance (theme) prefs                                |
+| `/profile`    | Profile    | Parent info, full children CRUD (add/edit/delete) with preferences UI           |
+| `/profiles`   | ProfileSelection | Child switcher shown after login (lazy-loaded)                           |
+
+### Player Overlay
+
+Stories are opened via a **Netflix-style overlay** rather than a page navigation. `PlayerContext` (`src/contexts/PlayerContext.tsx`) provides `openPlayer(id, state?)` and `closePlayer()`. `AppWrapper` renders `PlayerOverlayWrapper` — a fixed `inset-0 z-100` dark overlay that fades in at 280 ms — whenever `playerEntry` is set. A floating back-arrow button (fixed, top-left, blurred dark pill) dismisses the overlay with a fade-out.
+
+- Call sites (`Library`, `Create`, `Index2`) call `openPlayer()` instead of `navigate('/player/...')`. URL does **not** change.
+- Direct URL access (`/player/:id`) still works as a full-page player (sidebar hidden). Use this for bookmarks or shared links.
+- `Player` component accepts optional props `overlayId`, `overlayState`, `overlayMode`. In overlay mode the built-in back-nav bar is hidden (the overlay provides the back button) and a spacer replaces it.
 
 ### Auth Flow
 
 Auth uses **HTTP-only cookies** (`sb-access-token`, `sb-refresh-token`) set by the Hono backend. The frontend never holds raw tokens.
 
 1. `AuthProvider` (wraps entire app) — calls `GET /api/auth/me` on mount to restore session; holds `profile`, `children[]`, `activeChild` state.
-2. `apiFetch` helper in `src/lib/api.ts` — on 401, automatically POSTs to `/api/auth/refresh` then retries the original request.
+2. `apiFetch` helper in `src/lib/api.ts` — on 401, automatically POSTs to `/api/auth/refresh` then retries the original request. Returns `undefined` (not `.json()`) for 204 No Content responses so DELETE requests don't throw.
 3. `AuthGuard` — if no session → `/login`; if no `gdpr_consent_at` → `/onboarding`; otherwise renders children.
 4. `Onboarding` — Step 1: 3 GDPR checkboxes → upsert profile row with `gdpr_consent_at`. Step 2: add first child → `navigate("/create")`.
 5. `ThemeProvider` — stores `"light" | "dark" | "auto"` in `localStorage`, toggles `dark` CSS class on `<html>`.
@@ -153,6 +162,7 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 | `data/storyTemplates.ts`        | 40 static story templates (8 categories × 5 stories); used for Free plan and local title preview                                                                                            |
 | `contexts/AuthContext.tsx`      | `AuthProvider` + `useAuth()` — profile, children, activeChild, setActiveChild; bootstraps by calling `GET /api/auth/me`                                                                     |
 | `contexts/ThemeContext.tsx`     | `ThemeProvider` + `useTheme()` — light/dark/auto, persists to localStorage                                                                                                                  |
+| `contexts/PlayerContext.tsx`    | `PlayerProvider` + `usePlayer()` — `openPlayer(id, state?)` / `closePlayer()`; manages the overlay player entry                                                                             |
 | `api/openaiApi.ts`              | Thin shims: `generateStory`, `generateCoverImage`, `generateSceneImage`, `generateReferenceImage`, `extractStoryCharacters` — all delegate to backend via `apiFetch`                        |
 | `api/sceneImageApi.ts`          | Pure functions: `buildStoryContext`, `buildConsistentSceneSlots`, `getFallbackImage` — scene image slot construction                                                                         |
 | `api/storyDb.ts`                | `saveStory` / `loadStories` / `loadStory` / `updateStoryImages` / `updateStoryCoverUrl` / `updateStoryCharacterContext` — CRUD over `/api/db`; backend PATCH calls are UUID-guarded         |
@@ -163,7 +173,7 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 | `pages/Onboarding.tsx`          | Two-step: GDPR consent → add first child                                                                                                                                                    |
 | `pages/Create.tsx`              | Story generation; mode selector (New / Continue Previous / Favourite Character); saves story with timestamp ID locally; UUID-guarded backend writes                                         |
 | `pages/Profile.tsx`             | Parent info + full children CRUD (add/edit/delete) with preferences UI                                                                                                                      |
-| `pages/Player.tsx`              | 3-phase ritual for new stories; `CinematicIntro` for Library stories; TTS narration; progressive scene images; streak on last page; feedback footer; UUID guard before backend fetch        |
+| `pages/Player.tsx`              | 3-phase ritual for new stories; `CinematicIntro` for Library stories; TTS narration; progressive scene images; streak on last page; feedback footer; UUID guard before backend fetch. Accepts optional `overlayId`, `overlayState`, `overlayMode` props for overlay use. |
 | `pages/Dashboard.tsx`           | Tonight's Story card (title from local template, instant); Continue card; streak KPIs; plan quota badge                                                                                     |
 | `vite.config.ts` (frontend)     | Vite config + `/api` proxy to `@bedtime/backend` on port 3000                                                                                                                               |
 
@@ -194,7 +204,7 @@ All migrations live in `supabase/migrations/`. Run them **in filename order** ag
 - **`CinematicIntro`** — Brief intro for revisited Library stories (5 s). Calls `document.exitFullscreen()` when dismissing so the player returns to normal mode.
 - **`AudioControls`** — TTS play/pause bar with speed selector and narrator picker. Always visible when `hasParagraphs` (narrates `text[]` falling back to `summary`).
 - **`GenerationProgress`** — Writing phase loading overlay with rotating messages and star field.
-- **`Sidebar`** — Child switcher (coloured avatar chips) + nav links + parent sign-out. Hidden on `/player` routes. Has `dark:` variants.
+- **`Sidebar`** — Child switcher (coloured avatar chips) + nav links + parent sign-out. Hidden on `/player` routes. All nav links are normal `<Link>` components (parental gate removed from Settings). Has `dark:` variants.
 - **`Topbar`** — Search bar + user avatar. Has `dark:` variants.
 - **`Card`** — White card wrapper; has `dark:bg-gray-800` variant.
 - **`Badge`** — Pill badges with `new`, `popular`, `downloaded`, `default` variants.
