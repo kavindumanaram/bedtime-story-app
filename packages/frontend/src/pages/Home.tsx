@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Search, Play, Heart, X, ChevronRight, Clock } from 'lucide-react'
+import { Search, Play, Heart, X, ChevronLeft, ChevronRight, Clock, Bell, Sparkles } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useProfileSelection } from '../contexts/ProfileSelectionContext'
 import { loadStories } from '../api/storyDb'
@@ -21,27 +21,9 @@ const KEYFRAMES = `
     0%,100% { transform: translateY(0px) rotate(5deg) scale(1); }
     55%      { transform: translateY(16px) rotate(-6deg) scale(0.94); }
   }
-  @keyframes floatEmoji3 {
-    0%,100% { transform: translateY(-4px) rotate(0deg); }
-    50%      { transform: translateY(12px) rotate(8deg); }
-  }
-  @keyframes twinkle {
-    0%,100% { opacity: 0.15; transform: scale(0.7); }
-    50%      { opacity: 1;    transform: scale(1.3); }
-  }
-  @keyframes shimmerSlide {
-    0%   { background-position: -400px 0; }
-    100% { background-position:  400px 0; }
-  }
   @keyframes playGlow {
     0%,100% { box-shadow: 0 0 12px 3px rgba(245,183,49,0.55); }
     50%      { box-shadow: 0 0 28px 8px rgba(245,183,49,0.9); }
-  }
-  @keyframes riseSpark {
-    0%   { opacity:0; transform:translateY(0) scale(.6); }
-    20%  { opacity:.9; }
-    80%  { opacity:.3; }
-    100% { opacity:0; transform:translateY(-80px) scale(1.2); }
   }
 `
 
@@ -66,15 +48,6 @@ const CATEGORIES = [
   { id: 'space',     label: 'Space',     emoji: '🚀' },
   { id: 'ocean',     label: 'Ocean',     emoji: '🐬' },
   { id: 'nature',    label: 'Nature',    emoji: '🌿' },
-]
-
-// Emoji hero themes — no photos in the banner
-const HERO_THEMES = [
-  { bg: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)',   main: '🧙', supporting: ['⭐','🌙','✨','🏰','💫'], accent: '#c4b5fd', glow: 'rgba(192,132,252,0.6)' },
-  { bg: 'linear-gradient(135deg,#1a0533,#6b1fa2,#c2185b)',   main: '🐉', supporting: ['🔥','⚡','🏯','💎','🌟'], accent: '#f9a8d4', glow: 'rgba(236,72,153,0.6)' },
-  { bg: 'linear-gradient(135deg,#012345,#023e8a,#0077b6)',   main: '🚀', supporting: ['🌙','🪐','⭐','🛸','💫'], accent: '#93c5fd', glow: 'rgba(59,130,246,0.6)' },
-  { bg: 'linear-gradient(135deg,#052e16,#166534,#15803d)',   main: '🦁', supporting: ['🌿','🦋','🐘','🌸','🍄'], accent: '#86efac', glow: 'rgba(74,222,128,0.6)' },
-  { bg: 'linear-gradient(135deg,#450a0a,#991b1b,#c2410c)',   main: '🦸', supporting: ['⚔️','🛡️','🌋','💪','🔱'], accent: '#fca5a5', glow: 'rgba(239,68,68,0.6)' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -139,161 +112,84 @@ function matchesThemes(story: CommunityStory, themes: string[]) {
   return themes.some(th => t.includes(th) || tags.some(tag => tag.includes(th)))
 }
 
-// ── EmojiHeroBanner — emoji-only, no photos ───────────────────────────────────
-const EmojiHeroBanner: React.FC<{ onExplore: () => void }> = ({ onExplore }) => {
-  const [themeIdx, setThemeIdx] = useState(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const theme = HERO_THEMES[themeIdx]
+// ── HeroBanner — styled like the Create page dark header ─────────────────────
+const EmojiHeroBanner: React.FC<{ childName: string; onExplore: () => void; onCreate: () => void }> = ({ childName, onExplore, onCreate }) => (
+  <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg,#0f0e23,#1a1535,#0d1117)', minHeight: 230 }}>
+    {/* Purple glow — top right */}
+    <div style={{ position: 'absolute', top: '-20%', right: '-5%', width: 260, height: 260, borderRadius: '50%',
+      background: 'radial-gradient(circle,rgba(124,58,237,0.4) 0%,transparent 70%)', pointerEvents: 'none' }} />
+    {/* Cyan glow — bottom left */}
+    <div style={{ position: 'absolute', bottom: '-25%', left: '5%', width: 220, height: 220, borderRadius: '50%',
+      background: 'radial-gradient(circle,rgba(6,182,212,0.28) 0%,transparent 70%)', pointerEvents: 'none' }} />
 
-  useEffect(() => {
-    timerRef.current = setInterval(() => setThemeIdx(i => (i + 1) % HERO_THEMES.length), 6000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [])
+    {/* Floating emojis */}
+    {[
+      { ch: '✨', top: '10%', right: '16%', size: 28, anim: 'floatEmoji',  dur: '6s',   delay: '0s'   },
+      { ch: '🌙', top: '52%', right: '7%',  size: 46, anim: 'floatEmoji2', dur: '8s',   delay: '1.2s' },
+      { ch: '⭐', top: '18%', right: '36%', size: 18, anim: 'floatEmoji',  dur: '5.5s', delay: '0.8s' },
+      { ch: '🌟', top: '64%', right: '28%', size: 22, anim: 'floatEmoji2', dur: '7s',   delay: '2s'   },
+    ].map((d, i) => (
+      <div key={i} style={{
+        position: 'absolute', top: d.top, right: d.right, fontSize: d.size,
+        opacity: 0.65, pointerEvents: 'none', userSelect: 'none',
+        animation: `${d.anim} ${d.dur} ease-in-out ${d.delay} infinite`,
+      }}>{d.ch}</div>
+    ))}
 
-  const sparks = useMemo(() => Array.from({ length: 6 }, (_, i) => ({
-    left: `${20 + i * 11}%`, delay: `${i * 0.7}s`, dur: `${2.2 + i * 0.5}s`,
-  })), [])
+    {/* Bottom fade into white content card */}
+    <div style={{ position: 'absolute', inset: 0,
+      background: 'linear-gradient(to top, rgba(251,248,255,1) 0%, rgba(251,248,255,0.06) 22%, transparent 45%)',
+      pointerEvents: 'none' }} />
 
-  const floatPos = [
-    { top: '8%',  right: '8%',  size: 110, anim: 'floatEmoji',  dur: '7s',   delay: '0s'   },
-    { top: '22%', right: '28%', size: 48,  anim: 'floatEmoji2', dur: '9s',   delay: '1.2s' },
-    { top: '55%', right: '14%', size: 36,  anim: 'floatEmoji3', dur: '6s',   delay: '0.6s' },
-    { top: '60%', right: '35%', size: 26,  anim: 'floatEmoji',  dur: '8.5s', delay: '2s'   },
-  ]
-
-  return (
-    <div className="relative overflow-hidden" style={{ height: 340, background: theme.bg }}>
-      {/* Glow orb */}
-      <div style={{
-        position: 'absolute', top: '-20%', right: '-10%',
-        width: 320, height: 320, borderRadius: '50%',
-        background: `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`,
-        pointerEvents: 'none',
-      }} />
-
-      {/* Rising sparks */}
-      {sparks.map((s, i) => (
-        <div key={i} style={{
-          position: 'absolute', bottom: '18%', left: s.left,
-          width: 4, height: 4, borderRadius: '50%', background: '#F5B731',
-          animation: `riseSpark ${s.dur} ease-out ${s.delay} infinite`,
-          boxShadow: '0 0 6px #F5B731', pointerEvents: 'none',
-        }} />
-      ))}
-
-      {/* Floating supporting emojis */}
-      {theme.supporting.slice(0, 4).map((ch, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          top: floatPos[i].top, right: floatPos[i].right,
-          fontSize: floatPos[i].size, lineHeight: 1,
-          opacity: i === 0 ? 0.95 : 0.6,
-          filter: i === 0
-            ? `drop-shadow(0 8px 24px ${theme.glow}) drop-shadow(0 0 40px ${theme.glow})`
-            : `drop-shadow(0 4px 12px rgba(0,0,0,0.6))`,
-          animation: `${floatPos[i].anim} ${floatPos[i].dur} ease-in-out ${floatPos[i].delay} infinite`,
-          userSelect: 'none', pointerEvents: 'none',
-        }}>
-          {ch}
+    {/* Content */}
+    <div className="relative z-10 px-6 py-7" style={{ paddingBottom: 44 }}>
+      {/* "Story Feed" label — matches Create's "Story Studio" label */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+          style={{ background: 'rgba(245,183,49,0.15)', border: '1px solid rgba(245,183,49,0.35)' }}>
+          <Sparkles className="w-4 h-4" style={{ color: '#F5B731' }} />
         </div>
-      ))}
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(245,183,49,0.8)' }}>
+          ✦ Story Feed
+        </span>
+      </div>
 
-      {/* Twinkle dots */}
-      {[0,1,2,3,4].map(i => (
-        <div key={i} style={{
-          position: 'absolute',
-          top: `${18 + i * 11}%`, left: `${10 + ((i * 13) % 45)}%`,
-          width: 4, height: 4, borderRadius: '50%', background: theme.accent,
-          animation: `twinkle ${1.6 + i * 0.4}s ease-in-out ${i * 0.3}s infinite`,
-          boxShadow: `0 0 6px ${theme.accent}`, pointerEvents: 'none',
-        }} />
-      ))}
+      <h1 className="text-white font-black mb-1.5"
+        style={{ fontSize: 'clamp(22px,5vw,32px)', letterSpacing: '-0.02em', lineHeight: 1.12 }}>
+        {getGreeting()}, {childName}! 🌙
+      </h1>
+      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, marginBottom: 22, maxWidth: 300 }}>
+        Enchanting bedtime stories crafted just for you
+      </p>
 
-      {/* Bottom gradient fade */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'linear-gradient(to top, rgba(244,243,249,1) 0%, rgba(244,243,249,0.3) 30%, transparent 60%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'linear-gradient(to right, rgba(0,0,0,0.55) 0%, transparent 60%)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* Content */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={themeIdx}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.5 }}
-          style={{ position: 'absolute', bottom: 52, left: 0, right: 0, padding: '0 24px', zIndex: 5 }}
-        >
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '4px 12px', borderRadius: 99, marginBottom: 10,
-            background: 'rgba(245,183,49,0.18)', border: '1px solid rgba(245,183,49,0.4)',
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <motion.button whileTap={{ scale: 0.93 }} onClick={onExplore}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '11px 22px', borderRadius: 99,
+            background: 'linear-gradient(135deg,#F5B731,#D4950A)',
+            color: '#1a0e00', fontWeight: 900, fontSize: 14,
+            border: 'none', cursor: 'pointer',
+            animation: 'playGlow 2.4s ease-in-out infinite',
           }}>
-            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', color: '#F5B731', textTransform: 'uppercase' }}>
-              ✦ Tonight's Story
-            </span>
-          </div>
-          <h2 style={{
-            color: '#fff', fontWeight: 900, fontSize: 'clamp(22px,5vw,36px)',
-            lineHeight: 1.12, letterSpacing: '-0.02em', marginBottom: 8,
-            textShadow: '0 2px 20px rgba(0,0,0,0.8)',
-            maxWidth: 320,
+          <Play style={{ width: 15, height: 15, fill: '#1a0e00' }} />
+          Explore Stories
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.93 }} onClick={onCreate}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '11px 18px', borderRadius: 99,
+            background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(12px)',
+            border: '1.5px solid rgba(255,255,255,0.25)', color: '#fff',
+            fontWeight: 700, fontSize: 13, cursor: 'pointer',
           }}>
-            {theme.main} Magical Adventures Await
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, marginBottom: 20, maxWidth: 280 }}>
-            Discover enchanting bedtime stories crafted just for your little one
-          </p>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <motion.button
-              whileTap={{ scale: 0.93 }}
-              onClick={onExplore}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '12px 24px', borderRadius: 99,
-                background: 'linear-gradient(135deg,#F5B731,#D4950A)',
-                color: '#1a0e00', fontWeight: 900, fontSize: 14,
-                border: 'none', cursor: 'pointer',
-                animation: 'playGlow 2.4s ease-in-out infinite',
-              }}
-            >
-              <Play style={{ width: 15, height: 15, fill: '#1a0e00' }} />
-              Explore Stories
-            </motion.button>
-            <div style={{
-              padding: '12px 18px', borderRadius: 99,
-              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(12px)',
-              border: '1.5px solid rgba(255,255,255,0.3)', color: '#fff',
-              fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            }}>
-              ✨ Create New
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Theme dots */}
-      <div style={{ position: 'absolute', bottom: 24, right: 20, display: 'flex', gap: 6, zIndex: 6 }}>
-        {HERO_THEMES.map((_, i) => (
-          <button key={i} onClick={() => setThemeIdx(i)} style={{
-            width: i === themeIdx ? 22 : 6, height: 6, borderRadius: 99,
-            background: i === themeIdx ? '#F5B731' : 'rgba(255,255,255,0.35)',
-            border: 'none', cursor: 'pointer', padding: 0,
-            transition: 'width 0.3s ease',
-            boxShadow: i === themeIdx ? '0 0 8px rgba(245,183,49,0.8)' : 'none',
-          }} />
-        ))}
+          <Sparkles style={{ width: 14, height: 14 }} />
+          Create New
+        </motion.button>
       </div>
     </div>
-  )
-}
+  </div>
+)
 
 // ── LandscapeCard — wide horizontal card (Editor's Pick) ──────────────────────
 interface LandscapeCardProps {
@@ -488,6 +384,79 @@ const SectionHeader: React.FC<{ title: string; subtitle?: string; onViewAll?: ()
   </div>
 )
 
+// ── ArrowScrollRow — replaces native overflow-x scroll with < > buttons ──────
+interface ArrowScrollRowProps {
+  children: React.ReactNode
+  gap?: number
+  px?: number
+  mb?: number
+}
+const ArrowScrollRow: React.FC<ArrowScrollRowProps> = ({ children, gap = 12, px = 20, mb = 20 }) => {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [canLeft, setCanLeft] = useState(false)
+  const [canRight, setCanRight] = useState(false)
+
+  const checkArrows = useCallback(() => {
+    const el = trackRef.current
+    if (!el) return
+    setCanLeft(el.scrollLeft > 4)
+    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    const id = setTimeout(checkArrows, 80)
+    return () => clearTimeout(id)
+  }, [checkArrows, children])
+
+  const scroll = (dir: 1 | -1) => {
+    trackRef.current?.scrollBy({ left: dir * 240, behavior: 'smooth' })
+    setTimeout(checkArrows, 350)
+  }
+
+  const arrowBtn = (side: 'left' | 'right'): React.CSSProperties => ({
+    position: 'absolute',
+    [side]: 4,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    zIndex: 10,
+    width: 32, height: 32, borderRadius: '50%',
+    background: 'rgba(15,14,35,0.88)',
+    backdropFilter: 'blur(10px)',
+    border: '1.5px solid rgba(255,255,255,0.15)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer',
+    boxShadow: '0 4px 18px rgba(0,0,0,0.32)',
+    padding: 0,
+  })
+
+  return (
+    <div style={{ position: 'relative', marginBottom: mb }}>
+      <AnimatePresence>
+        {canLeft && (
+          <motion.button key="al"
+            initial={{ opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.75 }}
+            transition={{ duration: 0.15 }} onClick={() => scroll(-1)} style={arrowBtn('left')}>
+            <ChevronLeft style={{ width: 15, height: 15, color: '#fff' }} />
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {canRight && (
+          <motion.button key="ar"
+            initial={{ opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.75 }}
+            transition={{ duration: 0.15 }} onClick={() => scroll(1)} style={arrowBtn('right')}>
+            <ChevronRight style={{ width: 15, height: 15, color: '#fff' }} />
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <div ref={trackRef} onScroll={checkArrows}
+        style={{ display: 'flex', gap, padding: `0 ${px}px`, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ── Home ──────────────────────────────────────────────────────────────────────
 export const Home: React.FC = () => {
   const navigate = useNavigate()
@@ -500,7 +469,6 @@ export const Home: React.FC = () => {
   const [recommended,      setRecommended]       = useState<CommunityStory[]>([])
   const [loading,          setLoading]           = useState(true)
   const [searchQuery,      setSearchQuery]       = useState('')
-  const [searchOpen,       setSearchOpen]        = useState(false)
   const [activeCategory,   setActiveCategory]    = useState('all')
   const [activeAge,        setActiveAge]         = useState('All')
   const [activeDuration,   setActiveDuration]    = useState<string | null>(null)
@@ -541,12 +509,10 @@ export const Home: React.FC = () => {
     if (activeChild?.id !== prevChildId.current) {
       prevChildId.current = activeChild?.id ?? null
       setUserStories([]); setCommunityStories([]); setSydneyStories([]); setRecommended([])
-      setSearchQuery(''); setSearchOpen(false); setActiveCategory('all'); setActiveAge('All'); setActiveDuration(null)
+      setSearchQuery(''); setActiveCategory('all'); setActiveAge('All'); setActiveDuration(null)
     }
     load()
   }, [load, activeChild?.id])
-
-  useEffect(() => { if (searchOpen) searchInputRef.current?.focus() }, [searchOpen])
 
   const filterC = (stories: CommunityStory[]) =>
     stories.filter(s => matchesFilter(s, activeCategory) && matchesSearch(s, searchQuery))
@@ -571,73 +537,71 @@ export const Home: React.FC = () => {
       <style>{KEYFRAMES}</style>
 
       {/* ── Sticky Header ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 flex items-center gap-3 px-5 py-3"
-        style={{ background: 'rgba(15,14,35,0.96)', backdropFilter: 'blur(24px)', borderBottom: '1px solid rgba(245,183,49,0.14)' }}>
-        <span className="text-white font-black text-lg flex-shrink-0" style={{ letterSpacing: '-0.01em' }}>
-          <span style={{ color: '#F5B731' }}>Hush</span>Tales
-        </span>
-        <div className="flex-1 hidden md:flex items-center gap-2 mx-4 px-4 py-2 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.14)' }}>
-          <Search className="w-4 h-4 text-white/30 flex-shrink-0" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search stories, themes, characters…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')}><X className="w-3.5 h-3.5 text-white/35" /></button>
-          )}
-        </div>
-        <div className="flex-1 min-w-0 md:hidden">
-          <p className="text-amber-300/55 text-[11px] font-semibold">{getGreeting()},</p>
-          <h1 className="text-white font-black text-[15px] leading-tight truncate">{activeChild.name}! 🌙</h1>
-        </div>
-        <motion.button whileTap={{ scale: 0.86 }} onClick={() => setSearchOpen(v => !v)}
-          className="md:hidden w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: searchOpen ? '#F5B731' : 'rgba(255,255,255,0.10)', border: '1.5px solid rgba(255,255,255,0.14)' }}>
-          {searchOpen ? <X className="w-4 h-4 text-white" /> : <Search className="w-4 h-4 text-white" />}
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => { setProfileSelected(false); navigate('/profiles') }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-          <div className="relative flex-shrink-0">
-            <div className="absolute inset-0 rounded-full blur-md animate-pulse opacity-60"
-              style={{ background: activeChild.avatar_color, transform: 'scale(1.6)' }} />
-            <div className="relative w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-black z-10 border-2 border-white/30"
-              style={{ background: activeChild.avatar_color }}>
-              {activeChild.name[0].toUpperCase()}
+      <header className="sticky top-0 z-40"
+        style={{ background: 'rgba(10,9,28,0.97)', backdropFilter: 'blur(28px)', borderBottom: '1px solid rgba(245,183,49,0.10)' }}>
+
+        {/* Top row: greeting + avatar + bell + magic wand */}
+        <div className="flex items-center gap-3 px-5 pt-3 pb-2">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => { setProfileSelected(false); navigate('/profiles') }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <div className="relative flex-shrink-0">
+              <div className="absolute inset-0 rounded-full blur-sm opacity-70"
+                style={{ background: activeChild.avatar_color, transform: 'scale(1.5)' }} />
+              <div className="relative w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-black z-10 border-2 border-white/20 shadow-lg"
+                style={{ background: activeChild.avatar_color }}>
+                {activeChild.name[0].toUpperCase()}
+              </div>
             </div>
+          </motion.button>
+
+          <div className="flex-1 min-w-0">
+            <p className="text-amber-300/60 text-[10px] font-bold uppercase tracking-wider">{getGreeting()}</p>
+            <h1 className="text-white font-black text-[16px] leading-tight truncate" style={{ letterSpacing: '-0.01em' }}>
+              {activeChild.name}! 🌙
+            </h1>
           </div>
-        </motion.button>
-        <MagicWand />
+
+          {/* Bell */}
+          <motion.button whileTap={{ scale: 0.88 }}
+            className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 relative"
+            style={{ background: 'rgba(255,255,255,0.07)', border: '1.5px solid rgba(255,255,255,0.10)' }}>
+            <Bell className="w-4 h-4 text-white/70" />
+            {/* Notification dot */}
+            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-amber-400 border border-[#0a091c]" />
+          </motion.button>
+
+          <MagicWand />
+        </div>
+
+        {/* Search bar row */}
+        <div className="px-5 pb-3">
+          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.10)' }}>
+            <Search className="w-4 h-4 text-white/35 flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search stories, themes, characters…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
+              style={{ fontWeight: 500 }}
+            />
+            {searchQuery && (
+              <motion.button whileTap={{ scale: 0.85 }} onClick={() => setSearchQuery('')}>
+                <X className="w-4 h-4 text-white/40" />
+              </motion.button>
+            )}
+          </div>
+        </div>
       </header>
 
-      {/* ── Mobile search dropdown ──────────────────────────────────────── */}
-      <AnimatePresence>
-        {searchOpen && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
-            className="overflow-hidden sticky z-30 md:hidden"
-            style={{ top: 60, background: 'rgba(15,14,35,0.98)', backdropFilter: 'blur(24px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="px-5 py-3 flex items-center gap-3">
-              <Search className="w-4 h-4 flex-shrink-0 text-amber-300/45" />
-              <input ref={searchInputRef} type="text" placeholder="Search stories…"
-                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                className="flex-1 py-2 bg-transparent text-sm font-medium placeholder:text-amber-200/35 text-white outline-none" />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="flex-shrink-0">
-                  <X className="w-4 h-4 text-amber-300/55" />
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Emoji Hero Banner ───────────────────────────────────────────── */}
-      <EmojiHeroBanner onExplore={() => navigate('/library')} />
+      {/* ── Hero Banner ─────────────────────────────────────────────────── */}
+      <EmojiHeroBanner
+        childName={activeChild.name}
+        onExplore={() => navigate('/library')}
+        onCreate={() => navigate('/create')}
+      />
 
       {/* ── White content area (pulls over hero bottom) ──────────────────── */}
       <div style={{
@@ -653,78 +617,103 @@ export const Home: React.FC = () => {
       }}>
 
         {/* ── Age filter circles ────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 14, padding: '0 20px 24px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {AGE_FILTERS.map(({ label, emoji }) => (
-            <motion.button key={label} whileTap={{ scale: 0.88 }} onClick={() => setActiveAge(label)}
-              style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 24,
-                background: activeAge === label
-                  ? 'linear-gradient(135deg,#F5B731,#D4950A)'
-                  : '#FFFFFF',
-                border: activeAge === label
-                  ? '2.5px solid #F5B731'
-                  : '2px solid #E5E7EB',
-                boxShadow: activeAge === label
-                  ? '0 4px 16px rgba(245,183,49,0.45)'
-                  : '0 2px 8px rgba(0,0,0,0.08)',
-                transition: 'all 0.2s ease',
-              }}>
-                {emoji}
-              </div>
-              <span style={{
-                fontSize: 11, fontWeight: activeAge === label ? 800 : 500,
-                color: activeAge === label ? '#D4950A' : '#6B7280',
-              }}>
-                {label}
-              </span>
-            </motion.button>
-          ))}
-        </div>
+        <ArrowScrollRow gap={16} px={20} mb={20}>
+          {AGE_FILTERS.map(({ label, emoji }, idx) => {
+            const CIRCLE_GRADIENTS = [
+              'linear-gradient(135deg,#1a0533,#6b1fa2,#c2185b)',
+              'linear-gradient(135deg,#1a0a2e,#0d47a1,#1565c0)',
+              'linear-gradient(135deg,#0a2744,#155e75,#0891b2)',
+              'linear-gradient(135deg,#14532d,#166534,#16a34a)',
+              'linear-gradient(135deg,#1c1917,#57534e,#78716c)',
+              'linear-gradient(135deg,#020617,#1e3a8a,#1d4ed8)',
+              'linear-gradient(135deg,#2d1b69,#5b21b6,#7c3aed)',
+            ]
+            const isActive = activeAge === label
+            return (
+              <motion.button key={label} whileTap={{ scale: 0.88 }} onClick={() => setActiveAge(label)}
+                style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 26,
+                  background: CIRCLE_GRADIENTS[idx % CIRCLE_GRADIENTS.length],
+                  border: isActive ? '3px solid #F5B731' : '2.5px solid rgba(255,255,255,0.08)',
+                  boxShadow: isActive
+                    ? '0 0 0 2px rgba(245,183,49,0.25), 0 8px 24px rgba(0,0,0,0.28)'
+                    : '0 4px 16px rgba(0,0,0,0.20)',
+                  transition: 'all 0.22s ease',
+                  position: 'relative',
+                }}>
+                  {emoji}
+                  {isActive && (
+                    <span style={{
+                      position: 'absolute', bottom: -2, right: -2,
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: '#F5B731', border: '2px solid #fbf8ff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 900, color: '#1a0e00',
+                    }}>✓</span>
+                  )}
+                </div>
+                <span style={{
+                  fontSize: 11, fontWeight: isActive ? 800 : 500,
+                  color: isActive ? '#D4950A' : '#6B7280',
+                  letterSpacing: isActive ? '0.01em' : 0,
+                }}>
+                  {label}
+                </span>
+              </motion.button>
+            )
+          })}
+        </ArrowScrollRow>
 
-        {/* ── Category pills ────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 8, padding: '0 20px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {/* ── Category + Duration pills ─────────────────────────────────── */}
+        <ArrowScrollRow gap={8} px={20} mb={4}>
           {CATEGORIES.map(cat => (
             <motion.button key={cat.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveCategory(cat.id)}
               style={{
                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
-                padding: '8px 16px', borderRadius: 99,
-                background: activeCategory === cat.id ? '#0F0E23' : '#FFFFFF',
-                border: activeCategory === cat.id ? '2px solid #0F0E23' : '2px solid #E5E7EB',
+                padding: '9px 16px', borderRadius: 99,
+                background: activeCategory === cat.id
+                  ? 'linear-gradient(135deg,#0F0E23,#1e1b4b)'
+                  : '#FFFFFF',
+                border: activeCategory === cat.id ? '2px solid #0F0E23' : '2px solid #EBEBF0',
                 color: activeCategory === cat.id ? '#fff' : '#4B5563',
                 fontWeight: 700, fontSize: 13,
                 cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                boxShadow: activeCategory === cat.id
+                  ? '0 4px 14px rgba(15,14,35,0.28)'
+                  : '0 2px 6px rgba(0,0,0,0.05)',
                 transition: 'all 0.2s ease',
               }}>
-              <span style={{ fontSize: 14 }}>{cat.emoji}</span>
+              <span style={{ fontSize: 14, lineHeight: 1 }}>{cat.emoji}</span>
               {cat.label}
             </motion.button>
           ))}
-        </div>
 
-        {/* ── Duration chips ────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 8, padding: '4px 20px 24px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {/* Divider */}
+          <div style={{ width: 1, height: 22, background: '#E5E7EB', flexShrink: 0, margin: '0 2px' }} />
+
           {DURATION_FILTERS.map(d => (
             <motion.button key={d} whileTap={{ scale: 0.9 }} onClick={() => setActiveDuration(v => v === d ? null : d)}
               style={{
                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
-                padding: '6px 14px', borderRadius: 99,
+                padding: '9px 14px', borderRadius: 99,
                 background: activeDuration === d ? 'rgba(245,183,49,0.12)' : '#FFFFFF',
-                border: activeDuration === d ? '2px solid #F5B731' : '2px solid #E5E7EB',
-                color: activeDuration === d ? '#D4950A' : '#6B7280',
+                border: activeDuration === d ? '2px solid #F5B731' : '2px solid #EBEBF0',
+                color: activeDuration === d ? '#B45309' : '#6B7280',
                 fontWeight: activeDuration === d ? 700 : 500,
                 fontSize: 12, cursor: 'pointer',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                boxShadow: activeDuration === d
+                  ? '0 3px 10px rgba(245,183,49,0.18)'
+                  : '0 1px 4px rgba(0,0,0,0.05)',
                 transition: 'all 0.2s ease',
               }}>
-              <Clock style={{ width: 10, height: 10 }} />
+              <Clock style={{ width: 11, height: 11 }} />
               {d}
             </motion.button>
           ))}
-        </div>
+        </ArrowScrollRow>
 
         {/* ── Loading shimmer ───────────────────────────────────────────── */}
         {loading && (
